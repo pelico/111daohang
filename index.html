@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>极简导航 - 您的上网入口</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a2980, #26d0ce);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+            background-attachment: fixed;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        /* 顶部导航栏样式 */
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 25px;
+            background: rgba(255, 255, 255, 0.92);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            margin-bottom: 40px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .time-weather {
+            display: flex;
+            align-items: center;
+            gap: 25px;
+        }
+        
+        .time {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1a73e8;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .date {
+            font-size: 1rem;
+            color: #5f6368;
+            margin-top: 5px;
+            font-weight: 500;
+        }
+        
+        .weather {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(120deg, #e0f7fa, #bbdefb);
+            padding: 8px 20px;
+            border-radius: 50px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        
+        .weather i {
+            color: #ff9800;
+            font-size: 1.5rem;
+        }
+        
+        .weather-info {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .temp {
+            font-weight: 700;
+            color: #1a237e;
+        }
+        
+        .city {
+            font-size: 0.9rem;
+            color: #5f6368;
+            font-weight: 500;
+        }
+        
+        /* 搜索框样式 */
+        .search-container {
+            flex-grow: 1;
+            max-width: 650px;
+            margin: 0 30px;
+        }
+        
+        .search-box {
+            display: flex;
+            height: 55px;
+            border-radius: 30px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease;
+        }
+        
+        .search-box:hover {
+            box-shadow: 0 6px 20px rgba(26, 115, 232, 0.4);
+        }
+        
+        .search-box input {
+            flex-grow: 1;
+            border: none;
+            padding: 0 25px;
+            font-size: 1.1rem;
+            outline: none;
+            background: #fff;
+        }
+        
+        .search-box button {
+            width: 70px;
+            background: #1a73e8;
+            border: none;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s;
+            font-size: 1.2rem;
+        }
+        
+        .search-box button:hover {
+            background: #0d62da;
+        }
+        
+        /* 导航块区域 */
+        .nav-title {
+            text-align: center;
+            margin: 30px 0 40px;
+            color: white;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        
+        .nav-title h1 {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+        
+        .nav-title p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .nav-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 20px;
+        }
+        
+        .nav-category {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .nav-category:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+        }
+        
+        .category-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e0e0e0;
+            color: #1a73e8;
+        }
+        
+        .category-title i {
+            font-size: 1.6rem;
+            background: linear-gradient(45deg, #1a73e8, #0d47a1);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        
+        .category-title h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        
+        .nav-links {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        
+        .nav-link {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            color: #202124;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+            font-weight: 500;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .nav-link:hover {
+            background: #e8f0fe;
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(26, 115, 232, 0.2);
+            border-color: #1a73e8;
+        }
+        
+        .nav-link i {
+            margin-right: 12px;
+            font-size: 1.3rem;
+            width: 24px;
+            text-align: center;
+        }
+        
+        /* 页脚样式 */
+        footer {
+            text-align: center;
+            margin-top: 60px;
+            padding: 25px;
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 900px) {
+            .top-bar {
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .time-weather {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .search-container {
+                width: 100%;
+                margin: 15px 0;
+            }
+        }
+        
+        @media (max-width: 600px) {
+            .nav-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .nav-links {
+                grid-template-columns: 1fr;
+            }
+            
+            .nav-title h1 {
+                font-size: 2.2rem;
+            }
+            
+            .nav-title p {
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 顶部导航栏 -->
+        <div class="top-bar">
+            <div class="time-weather">
+                <div class="time-info">
+                    <div class="time" id="current-time">00:00:00</div>
+                    <div class="date" id="current-date">2023年1月1日 星期一</div>
+                </div>
+                <div class="weather">
+                    <i class="fas fa-sun"></i>
+                    <div class="weather-info">
+                        <div class="temp">28°C</div>
+                        <div class="city">北京 · 晴</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="search-container">
+                <form class="search-box" action="https://www.baidu.com/s" method="get" target="_blank">
+                    <input type="text" name="wd" placeholder="百度一下..." required>
+                    <button type="submit"><i class="fas fa-search"></i></button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 标题区域 -->
+        <div class="nav-title">
+            <h1>极简导航</h1>
+            <p>快速访问您喜爱的网站</p>
+        </div>
+        
+        <!-- 导航块区域 -->
+        <div class="nav-grid">
+            <!-- 常用网站 -->
+            <div class="nav-category">
+                <div class="category-title">
+                    <i class="fas fa-star"></i>
+                    <h2>常用网站</h2>
+                </div>
+                <div class="nav-links">
+                    <a href="https://www.baidu.com" target="_blank" class="nav-link"><i class="fab fa-chrome"></i> 百度</a>
+                    <a href="https://www.zhihu.com" target="_blank" class="nav-link"><i class="fas fa-question-circle"></i> 知乎</a>
+                    <a href="https://github.com" target="_blank" class="nav-link"><i class="fab fa-github"></i> GitHub</a>
+                    <a href="https://stackoverflow.com" target="_blank" class="nav-link"><i class="fab fa-stack-overflow"></i> Stack Overflow</a>
+                    <a href="https://weibo.com" target="_blank" class="nav-link"><i class="fab fa-weibo"></i> 微博</a>
+                    <a href="https://www.bilibili.com" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> Bilibili</a>
+                </div>
+            </div>
+            
+            <!-- 社交娱乐 -->
+            <div class="nav-category">
+                <div class="category-title">
+                    <i class="fas fa-heart"></i>
+                    <h2>社交娱乐</h2>
+                </div>
+                <div class="nav-links">
+                    <a href="https://wx.qq.com" target="_blank" class="nav-link"><i class="fab fa-weixin"></i> 微信</a>
+                    <a href="https://im.qq.com" target="_blank" class="nav-link"><i class="fab fa-qq"></i> QQ</a>
+                    <a href="https://www.douyin.com" target="_blank" class="nav-link"><i class="fas fa-film"></i> 抖音</a>
+                    <a href="https://music.163.com" target="_blank" class="nav-link"><i class="fas fa-music"></i> 网易云音乐</a>
+                    <a href="https://www.iqiyi.com" target="_blank" class="nav-link"><i class="fas fa-tv"></i> 爱奇艺</a>
+                    <a href="https://www.youku.com" target="_blank" class="nav-link"><i class="fas fa-video"></i> 优酷</a>
+                </div>
+            </div>
+            
+            <!-- 学习资源 -->
+            <div class="nav-category">
+                <div class="category-title">
+                    <i class="fas fa-graduation-cap"></i>
+                    <h2>学习资源</h2>
+                </div>
+                <div class="nav-links">
+                    <a href="https://www.icourse163.org" target="_blank" class="nav-link"><i class="fas fa-university"></i> 中国大学MOOC</a>
+                    <a href="https://www.coursera.org" target="_blank" class="nav-link"><i class="fas fa-book"></i> Coursera</a>
+                    <a href="https://www.khanacademy.org" target="_blank" class="nav-link"><i class="fas fa-laptop-code"></i> Khan Academy</a>
+                    <a href="https://www.edx.org" target="_blank" class="nav-link"><i class="fas fa-graduation-cap"></i> edX</a>
+                    <a href="https://www.douban.com" target="_blank" class="nav-link"><i class="fas fa-book-open"></i> 豆瓣读书</a>
+                    <a href="https://www.ted.com" target="_blank" class="nav-link"><i class="fab fa-slideshare"></i> TED</a>
+                </div>
+            </div>
+            
+            <!-- 购物生活 -->
+            <div class="nav-category">
+                <div class="category-title">
+                    <i class="fas fa-shopping-cart"></i>
+                    <h2>购物生活</h2>
+                </div>
+                <div class="nav-links">
+                    <a href="https://www.taobao.com" target="_blank" class="nav-link"><i class="fas fa-shopping-bag"></i> 淘宝</a>
+                    <a href="https://www.jd.com" target="_blank" class="nav-link"><i class="fas fa-store"></i> 京东</a>
+                    <a href="https://www.meituan.com" target="_blank" class="nav-link"><i class="fas fa-utensils"></i> 美团</a>
+                    <a href="https://www.dianping.com" target="_blank" class="nav-link"><i class="fas fa-star"></i> 大众点评</a>
+                    <a href="https://www.ctrip.com" target="_blank" class="nav-link"><i class="fas fa-hotel"></i> 携程</a>
+                    <a href="https://www.sf-express.com" target="_blank" class="nav-link"><i class="fas fa-truck"></i> 顺丰快递</a>
+                </div>
+            </div>
+            
+            <!-- 技术开发 -->
+            <div class="nav-category">
+                <div class="category-title">
+                    <i class="fas fa-code"></i>
+                    <h2>技术开发</h2>
+                </div>
+                <div class="nav-links">
+                    <a href="https://developer.mozilla.org" target="_blank" class="nav-link"><i class="fab fa-js"></i> MDN Web Docs</a>
+                    <a href="https://npmjs.com" target="_blank" class="nav-link"><i class="fab fa-npm"></i> npm</a>
+                    <a href="https://hub.docker.com" target="_blank" class="nav-link"><i class="fab fa-docker"></i> Docker Hub</a>
+                    <a href="https://docs.microsoft.com" target="_blank" class="nav-link"><i class="fab fa-microsoft"></i> Microsoft Docs</a>
+                    <a href="https://aws.amazon.com" target="_blank" class="nav-link"><i class="fab fa-aws"></i> AWS</a>
+                    <a href="https://pypi.org" target="_blank" class="nav-link"><i class="fab fa-python"></i> PyPI</a>
+                </div>
+            </div>
+            
+            <!-- 新闻资讯 -->
+            <div class="nav-category">
+                <div class="category-title">
+                    <i class="far fa-newspaper"></i>
+                    <h2>新闻资讯</h2>
+                </div>
+                <div class="nav-links">
+                    <a href="https://www.people.com.cn" target="_blank" class="nav-link"><i class="fas fa-newspaper"></i> 人民日报</a>
+                    <a href="https://www.xinhuanet.com" target="_blank" class="nav-link"><i class="fas fa-globe-asia"></i> 新华网</a>
+                    <a href="https://www.thepaper.cn" target="_blank" class="nav-link"><i class="fas fa-feather"></i> 澎湃新闻</a>
+                    <a href="https://www.bbc.com" target="_blank" class="nav-link"><i class="fas fa-globe"></i> BBC News</a>
+                    <a href="https://cn.nytimes.com" target="_blank" class="nav-link"><i class="fas fa-dollar-sign"></i> 纽约时报</a>
+                    <a href="https://www.hupu.com" target="_blank" class="nav-link"><i class="fas fa-basketball-ball"></i> 虎扑体育</a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 页脚 -->
+        <footer>
+            <p>© 2023 极简导航 | 让您的网络之旅更高效 | 已收录 <span id="site-count">36</span> 个优质网站</p>
+        </footer>
+    </div>
+
+    <script>
+        // 更新时间函数
+        function updateTime() {
+            const now = new Date();
+            
+            // 格式化时间
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            
+            // 格式化日期
+            const year = now.getFullYear();
+            const month = now.getMonth() + 1;
+            const day = now.getDate();
+            
+            // 星期几
+            const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+            const weekday = weekdays[now.getDay()];
+            
+            // 更新页面元素
+            document.getElementById('current-time').textContent = `${hours}:${minutes}:${seconds}`;
+            document.getElementById('current-date').textContent = `${year}年${month}月${day}日 ${weekday}`;
+        }
+        
+        // 初始调用并设置定时器
+        updateTime();
+        setInterval(updateTime, 1000);
+        
+        // 模拟天气数据变化
+        function updateWeather() {
+            const temps = [22, 23, 24, 25, 26, 27, 28, 29, 30];
+            const weathers = ['晴', '多云', '小雨', '阴'];
+            const cities = ['北京', '上海', '广州', '深圳', '杭州', '南京'];
+            
+            const temp = temps[Math.floor(Math.random() * temps.length)];
+            const weather = weathers[Math.floor(Math.random() * weathers.length)];
+            const city = cities[Math.floor(Math.random() * cities.length)];
+            
+            document.querySelector('.temp').textContent = `${temp}°C`;
+            document.querySelector('.city').textContent = `${city} · ${weather}`;
+            
+            // 根据天气更新图标
+            const icon = document.querySelector('.weather i');
+            if(weather === '晴') {
+                icon.className = 'fas fa-sun';
+                icon.style.color = '#ff9800';
+            } else if(weather === '多云') {
+                icon.className = 'fas fa-cloud';
+                icon.style.color = '#78909c';
+            } else if(weather === '小雨') {
+                icon.className = 'fas fa-cloud-rain';
+                icon.style.color = '#2196f3';
+            } else {
+                icon.className = 'fas fa-cloud';
+                icon.style.color = '#607d8b';
+            }
+        }
+        
+        // 每10分钟更新一次天气
+        updateWeather();
+        setInterval(updateWeather, 600000);
+        
+        // 计算网站数量
+        function countSites() {
+            const sites = document.querySelectorAll('.nav-link');
+            document.getElementById('site-count').textContent = sites.length;
+        }
+        
+        countSites();
+    </script>
+</body>
+</html>
