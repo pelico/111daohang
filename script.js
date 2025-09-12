@@ -3,10 +3,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- API Endpoints ---
     const NOTIFICATIONS_API = 'https://jy-api.111312.xyz/notifications';
     const MONITORING_PROXY_API = 'https://up-api.111312.xyz/';
+    const WEATHER_API = 'https://tq-api.111312.xyz'; // 【新增】天气 API
 
     // --- 全局变量和状态 ---
     let monitorDataCache = [];
     let notificationsLoaded = false;
+    let weatherLoaded = false; // 【新增】天气模块加载状态
     let nasCpuHistoryChart, nasNetworkHistoryChart;
 
     // --- 1. 基础功能 ---
@@ -65,10 +67,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     fetchNotifications();
                     notificationsLoaded = true;
                 }
+                
+                // 【新增】天气模块的懒加载逻辑
+                if (tabId === 'tab-weather' && !weatherLoaded) {
+                    fetchWeatherData();
+                    weatherLoaded = true;
+                }
             });
         });
     }
-
 
     // --- 3. 我的通知功能 ---
     function showNotificationStatus(message, type = 'info') {
@@ -86,12 +93,8 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const response = await fetch(NOTIFICATIONS_API);
             if (!response.ok) throw new Error(`HTTP错误! 状态码: ${response.status}`);
-            
             const data = await response.json();
-            
-            if (data.success === false) { 
-                throw new Error(`API返回错误: ${data.error || '未知错误'}`);
-            }
+            if (data.success === false) throw new Error(`API返回错误: ${data.error || '未知错误'}`);
 
             if (data.notifications && data.notifications.length > 0) {
                 listEl.innerHTML = '';
@@ -99,10 +102,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const div = document.createElement('div');
                     div.className = 'notification-item';
                     const date = new Date(item.timestamp);
-                    div.innerHTML = `
-                        <span class="notification-content">${item.content}</span>
-                        <span class="notification-timestamp">${date.toLocaleString('zh-CN')}</span>
-                    `;
+                    div.innerHTML = `<span class="notification-content">${item.content}</span><span class="notification-timestamp">${date.toLocaleString('zh-CN')}</span>`;
                     listEl.appendChild(div);
                 });
                 showNotificationStatus(`成功加载 ${data.notifications.length} 条通知`, 'success');
@@ -116,7 +116,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-
     // --- 4. 服务监控功能 ---
     const STATUS_MAP = {
         0: { text: '暂停中', class: 'status-warning', icon: 'fa-pause-circle' },
@@ -125,7 +124,7 @@ document.addEventListener('DOMContentLoaded', function() {
         8: { text: '疑似故障', class: 'status-warning', icon: 'fa-exclamation-circle' },
         9: { text: '服务中断', class: 'status-down', icon: 'fa-times-circle' },
     };
-
+    
     function renderMonitoringPage(data) {
         if (!data) {
             showMonitoringError("未能从API获取到有效的监控数据。");
@@ -133,10 +132,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const container = document.getElementById('monitoring-container');
-        // 清空容器，准备动态生成内容
         container.innerHTML = '';
 
-        // --- A. 生成 NAS 模块 (如果数据存在) ---
         if (data.nas_stats || data.nas_history) {
             const nasSection = document.createElement('div');
             nasSection.className = 'nas-section';
@@ -153,13 +150,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             `;
             container.appendChild(nasSection);
-            
-            // 渲染 NAS 数据
             if (data.nas_stats) renderNasProgressBars(data.nas_stats);
             if (data.nas_history) renderNasHistoryCharts(data.nas_history);
         }
         
-        // --- B. 生成 UptimeRobot 模块 (如果数据存在) ---
         if (data.monitors) {
             const monitors = data.monitors.filter(m => m.type === 1 || m.type === 2);
             monitorDataCache = monitors;
@@ -216,7 +210,6 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
             container.appendChild(uptimeContainer);
             renderOverviewCharts(monitors, { up: upCount, down: downCount, warning: warningCount });
-
         } else if (!data.nas_stats && !data.nas_history) {
              showMonitoringError("没有找到任何监控服务数据。");
         }
@@ -227,11 +220,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('nas-uptime').textContent = stats.system_time?.uptime || 'N/A';
         const container = document.getElementById('nas-realtime-stats');
         let html = '';
-        const items = [
-            { icon: 'fa-microchip', label: 'CPU', data: stats.cpu },
-            { icon: 'fa-memory', label: '内存', data: stats.memory },
-            { icon: 'fa-compact-disc', label: '磁盘', data: stats.disk }
-        ];
+        const items = [{ icon: 'fa-microchip', label: 'CPU', data: stats.cpu }, { icon: 'fa-memory', label: '内存', data: stats.memory }, { icon: 'fa-compact-disc', label: '磁盘', data: stats.disk }];
         items.forEach(item => {
             if (item.data) {
                  html += `<div class="nas-info-card">
@@ -254,16 +243,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const netCtx = document.getElementById('nasNetworkHistoryChart')?.getContext('2d');
         if (netCtx && history.network && history.network.length > 0) {
-            const datasets = [
-                { iface: 'eth0', recv: 'eth0_recv', sent: 'eth0_sent', color: 'rgba(76, 175, 80, 0.7)'},
-                { iface: 'wlan0', recv: 'wlan0_recv', sent: 'wlan0_sent', color: 'rgba(255, 152, 0, 0.7)'},
-                { iface: 'docker0', recv: 'docker0_recv', sent: 'docker0_sent', color: 'rgba(156, 39, 176, 0.7)'}
-            ].map(config => ({
-                label: `${config.iface} 总流量`,
-                data: history.network.map(d => ({ x: d.timestamp * 1000, y: ((d[config.recv] || 0) + (d[config.sent] || 0)) / 1024**3 })),
-                borderColor: config.color, borderWidth: 2, pointRadius: 0, tension: 0.4, fill: false
-            })).filter(ds => ds.data.some(d => d.y > 0));
-            
+            const datasets = [{ iface: 'eth0', recv: 'eth0_recv', sent: 'eth0_sent', color: 'rgba(76, 175, 80, 0.7)'}, { iface: 'wlan0', recv: 'wlan0_recv', sent: 'wlan0_sent', color: 'rgba(255, 152, 0, 0.7)'}, { iface: 'docker0', recv: 'docker0_recv', sent: 'docker0_sent', color: 'rgba(156, 39, 176, 0.7)'}].map(config => ({ label: `${config.iface} 总流量`, data: history.network.map(d => ({ x: d.timestamp * 1000, y: ((d[config.recv] || 0) + (d[config.sent] || 0)) / 1024**3 })), borderColor: config.color, borderWidth: 2, pointRadius: 0, tension: 0.4, fill: false })).filter(ds => ds.data.some(d => d.y > 0));
             nasNetworkHistoryChart = new Chart(netCtx, { type: 'line', data: { datasets: datasets }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day', tooltipFormat: 'yyyy-MM-dd' } }, y: { beginAtZero: true, title: { display: true, text: 'GB' } } }, plugins: { legend: { position: 'bottom' } } } });
         }
     }
@@ -274,9 +254,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const isExpanded = card.classList.toggle('expanded');
         if (isExpanded) {
             const monitor = monitorDataCache.find(m => m.id === monitorId);
-            if (monitor && monitor.response_times) {
-                createDetailChart(monitor);
-            }
+            if (monitor && monitor.response_times) createDetailChart(monitor);
         }
     }
     
@@ -285,43 +263,19 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!ctx) return;
         if (Chart.getChart(ctx)) Chart.getChart(ctx).destroy();
         const chartData = monitor.response_times.map(rt => ({ x: rt.datetime * 1000, y: rt.value })).reverse();
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                datasets: [{
-                    label: '响应时间 (ms)', data: chartData, borderColor: 'rgba(30, 136, 229, 0.5)', 
-                    backgroundColor: 'rgba(30, 136, 229, 0.1)', borderWidth: 2, tension: 0.3, fill: true, pointRadius: 1.5
-                }]
-            },
-            options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'hour' } }, y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
-        });
+        new Chart(ctx, { type: 'line', data: { datasets: [{ label: '响应时间 (ms)', data: chartData, borderColor: 'rgba(30, 136, 229, 0.5)', backgroundColor: 'rgba(30, 136, 229, 0.1)', borderWidth: 2, tension: 0.3, fill: true, pointRadius: 1.5 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'hour' } }, y: { beginAtZero: true } }, plugins: { legend: { display: false } } } });
     }
 
     function renderOverviewCharts(monitors, counts) {
         const statusCtx = document.getElementById('statusChart')?.getContext('2d');
         if (statusCtx) {
             if (Chart.getChart(statusCtx)) Chart.getChart(statusCtx).destroy();
-            new Chart(statusCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: ['正常', '警告', '故障'],
-                    datasets: [{ data: [counts.up, counts.warning, counts.down], backgroundColor: [ 'rgba(76, 175, 80, 0.8)', 'rgba(255, 152, 0, 0.8)', 'rgba(244, 67, 54, 0.8)' ], borderWidth: 2 }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
-            });
+            new Chart(statusCtx, { type: 'doughnut', data: { labels: ['正常', '警告', '故障'], datasets: [{ data: [counts.up, counts.warning, counts.down], backgroundColor: [ 'rgba(76, 175, 80, 0.8)', 'rgba(255, 152, 0, 0.8)', 'rgba(244, 67, 54, 0.8)' ], borderWidth: 2 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } } });
         }
-
         const rtCtx = document.getElementById('responseTimeChart')?.getContext('2d');
         if (rtCtx) {
             if (Chart.getChart(rtCtx)) Chart.getChart(rtCtx).destroy();
-            new Chart(rtCtx, {
-                type: 'bar',
-                data: {
-                    labels: monitors.map(m => m.friendly_name.substring(0, 12) + (m.friendly_name.length > 12 ? '...' : '')),
-                    datasets: [{ label: '响应时间 (ms)', data: monitors.map(m => m.response_times?.[0]?.value || 0), backgroundColor: 'rgba(30, 136, 229, 0.7)' }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
-            });
+            new Chart(rtCtx, { type: 'bar', data: { labels: monitors.map(m => m.friendly_name.substring(0, 12) + (m.friendly_name.length > 12 ? '...' : '')), datasets: [{ label: '响应时间 (ms)', data: monitors.map(m => m.response_times?.[0]?.value || 0), backgroundColor: 'rgba(30, 136, 229, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } } });
         }
     }
 
@@ -346,15 +300,119 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function initMonitoring() {
         const container = document.getElementById('monitoring-container');
-        
-        // 仅在容器为空时显示加载动画
-        if (!container.innerHTML.trim()) { 
+        if (!container.innerHTML.trim()) {
              container.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><p>正在加载全部监控数据...</p></div>`;
         }
-        
         const data = await fetchMonitoringData();
-        if (data) {
-            renderMonitoringPage(data);
+        if (data) renderMonitoringPage(data);
+    }
+
+    // --- 【新增】 5. 天气仪表盘功能 ---
+    const sourceStyles = {
+        'HefengAPI': { label: 'API', tempColor: 'rgb(255, 99, 132)', humidColor: 'rgb(255, 159, 64)' },
+        'ESP8266':   { label: '设备', tempColor: 'rgb(54, 162, 235)', humidColor: 'rgb(75, 192, 192)' },
+        'default':   { label: '其他', tempColor: 'rgb(201, 203, 207)', humidColor: 'rgb(153, 102, 255)' }
+    };
+
+    async function fetchWeatherData() {
+        const loadingMessage = document.getElementById('weather-loading-message');
+        const cardsContainer = document.getElementById('latest-weather-cards');
+        const chartsContainer = document.getElementById('weather-charts-container');
+
+        try {
+            const response = await fetch(WEATHER_API);
+            if (!response.ok) throw new Error(`无法从 Worker 获取数据，状态码: ${response.status}`);
+            const data = await response.json();
+            
+            loadingMessage.style.display = 'none';
+            cardsContainer.style.display = 'flex';
+            chartsContainer.style.display = 'flex';
+
+            displayLatestWeather(data.latest);
+            displayTrendCharts(data.history);
+
+        } catch (error) {
+            console.error('加载天气数据时发生错误:', error);
+            loadingMessage.innerHTML = `<p style="color: red;">无法加载天气数据。请检查 Worker URL (${WEATHER_API}) 是否正确，或查看控制台获取详细信息。</p>`;
+        }
+    }
+
+    function displayLatestWeather(latestData) {
+        const container = document.getElementById('latest-weather-cards');
+        container.innerHTML = ''; 
+        if (!latestData || latestData.length === 0) {
+            container.innerHTML = "<p>暂无最新的天气数据。</p>";
+            return;
+        }
+        for (const cityData of latestData) {
+            const card = document.createElement('div');
+            card.className = 'weather-card';
+            card.innerHTML = `
+                <h2>${cityData.city_name}</h2>
+                <p class="weather-text">${cityData.weather_text}</p>
+                <p><strong>温度:</strong> ${cityData.temperature}°C (体感 ${cityData.feels_like}°C)</p>
+                <p><strong>相对湿度:</strong> ${cityData.humidity}%</p>
+                <p class="timestamp">更新于: ${new Date(cityData.observation_time).toLocaleString()}</p>
+            `;
+            container.appendChild(card);
+        }
+    }
+
+    function displayTrendCharts(historyData) {
+        const container = document.getElementById('weather-charts-container');
+        container.innerHTML = '';
+        if (!historyData || historyData.length === 0) return;
+        
+        const cities = {};
+        for (const record of historyData) {
+            if (!cities[record.city_name]) cities[record.city_name] = [];
+            cities[record.city_name].push(record);
+        }
+
+        for (const cityName in cities) {
+            const chartContainer = document.createElement('div');
+            chartContainer.className = 'weather-chart-container';
+            const canvas = document.createElement('canvas');
+            chartContainer.appendChild(canvas);
+            container.appendChild(chartContainer);
+
+            const datasets = [];
+            const cityHistory = cities[cityName];
+            const sources = {};
+            for (const record of cityHistory) {
+                if (!sources[record.source]) sources[record.source] = [];
+                sources[record.source].push(record);
+            }
+
+            for (const sourceName in sources) {
+                const style = sourceStyles[sourceName] || sourceStyles.default;
+                const sourceData = sources[sourceName];
+                datasets.push({
+                    label: `温度 - ${style.label} (°C)`,
+                    data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.temperature })),
+                    borderColor: style.tempColor, backgroundColor: style.tempColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y', tension: 0.1
+                });
+                datasets.push({
+                    label: `湿度 - ${style.label} (%)`,
+                    data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.humidity })),
+                    borderColor: style.humidColor, backgroundColor: style.humidColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y1', borderDash: [5, 5], tension: 0.1
+                });
+            }
+
+            new Chart(canvas, {
+                type: 'line',
+                data: { datasets: datasets },
+                options: {
+                    responsive: true,
+                    interaction: { mode: 'index', intersect: false, },
+                    plugins: { title: { display: true, text: `${cityName} - 24小时趋势`, font: { size: 18 } } },
+                    scales: {
+                        x: { type: 'time', time: { unit: 'hour', tooltipFormat: 'yyyy-MM-dd HH:mm', displayFormats: { hour: 'HH:mm' } }, title: { display: true, text: '时间' } },
+                        y: { type: 'linear', display: true, position: 'left', title: { display: true, text: '温度 (°C)' } },
+                        y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: '相对湿度 (%)' }, grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
         }
     }
 
@@ -366,11 +424,7 @@ document.addEventListener('DOMContentLoaded', function() {
         setInterval(updateWeather, 600000);
         countSites();
         handleTabs();
-        
-        // 默认激活第一个内容页，并触发监控初始化
-        document.getElementById('tab-links').classList.add('active');
-        initMonitoring(); // 初始加载监控数据
-
+        initMonitoring();
         document.getElementById('refresh-notifications-btn').addEventListener('click', fetchNotifications);
     }
 
