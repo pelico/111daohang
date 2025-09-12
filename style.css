@@ -250,6 +250,19 @@ body {
 .status-msg.success { color: var(--success-color); background-color: rgba(46, 204, 113, 0.1); }
 .status-msg.error { color: var(--danger-color); background-color: rgba(231, 76, 60, 0.1); }
 
+/* --- 【新增】Tab 4: 天气仪表盘 --- */
+#weather-dashboard-container h1 { text-align: center; color: var(--primary-dark); margin-bottom: 30px; }
+#latest-weather-cards { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin-bottom: 40px; }
+.weather-card { background: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 20px; min-width: 280px; text-align: center; transition: transform 0.2s ease-in-out; }
+.weather-card:hover { transform: translateY(-5px); }
+.weather-card h2 { margin-top: 0; color: var(--primary-color); font-size: 1.8em; }
+.weather-card p { margin: 8px 0; font-size: 1.1em; }
+.weather-card .weather-text { font-size: 1.4em; font-weight: bold; color: #2c3e50; }
+.weather-card .timestamp { font-size: 0.8em; color: var(--text-light); }
+#weather-charts-container { display: flex; flex-direction: column; gap: 40px; align-items: center; }
+.weather-chart-container { width: 100%; max-width: 900px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+
+
 /* --- 通用状态 (加载/空/错误) --- */
 .loading-state, .empty-state, .error-state { text-align: center; padding: 40px 20px; color: var(--text-light); }
 .loading-spinner { width: 40px; height: 40px; border: 4px solid rgba(0, 0, 0, 0.1); border-left-color: var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; }
