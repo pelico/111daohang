@@ -1,14 +1,17 @@
 document.addEventListener('DOMContentLoaded', function() {
     
+    // --- 【新增】全局移动端检测 ---
+    const isMobile = window.innerWidth <= 768;
+
     // --- API Endpoints ---
     const NOTIFICATIONS_API = 'https://jy-api.111312.xyz/notifications';
     const MONITORING_PROXY_API = 'https://up-api.111312.xyz/';
-    const WEATHER_API = 'https://tq-api.111312.xyz'; // 【新增】天气 API
+    const WEATHER_API = 'https://tq-api.111312.xyz';
 
     // --- 全局变量和状态 ---
     let monitorDataCache = [];
     let notificationsLoaded = false;
-    let weatherLoaded = false; // 【新增】天气模块加载状态
+    let weatherLoaded = false;
     let nasCpuHistoryChart, nasNetworkHistoryChart;
 
     // --- 1. 基础功能 ---
@@ -68,7 +71,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     notificationsLoaded = true;
                 }
                 
-                // 【新增】天气模块的懒加载逻辑
                 if (tabId === 'tab-weather' && !weatherLoaded) {
                     fetchWeatherData();
                     weatherLoaded = true;
@@ -102,7 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const div = document.createElement('div');
                     div.className = 'notification-item';
                     const date = new Date(item.timestamp);
-                    div.innerHTML = `<span class="notification-content">${item.content}</span><span class="notification-timestamp">${date.toLocaleString('zh-CN')}</span>`;
+                    div.innerHTML = `<span class="notification-content">${item.content}</span><span class="notification-timestamp">${date.toLocaleString('zh-CN', { year: '2-digit', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>`;
                     listEl.appendChild(div);
                 });
                 showNotificationStatus(`成功加载 ${data.notifications.length} 条通知`, 'success');
@@ -117,47 +119,23 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // --- 4. 服务监控功能 ---
-    const STATUS_MAP = {
-        0: { text: '暂停中', class: 'status-warning', icon: 'fa-pause-circle' },
-        1: { text: '未检查', class: 'status-warning', icon: 'fa-question-circle' },
-        2: { text: '运行中', class: 'status-up', icon: 'fa-check-circle' },
-        8: { text: '疑似故障', class: 'status-warning', icon: 'fa-exclamation-circle' },
-        9: { text: '服务中断', class: 'status-down', icon: 'fa-times-circle' },
-    };
+    const STATUS_MAP = { 0: { text: '暂停中', class: 'status-warning', icon: 'fa-pause-circle' }, 1: { text: '未检查', class: 'status-warning', icon: 'fa-question-circle' }, 2: { text: '运行中', class: 'status-up', icon: 'fa-check-circle' }, 8: { text: '疑似故障', class: 'status-warning', icon: 'fa-exclamation-circle' }, 9: { text: '服务中断', class: 'status-down', icon: 'fa-times-circle' } };
     
     function renderMonitoringPage(data) {
-        if (!data) {
-            showMonitoringError("未能从API获取到有效的监控数据。");
-            return;
-        }
-
+        if (!data) { showMonitoringError("未能从API获取到有效的监控数据。"); return; }
         const container = document.getElementById('monitoring-container');
         container.innerHTML = '';
-
         if (data.nas_stats || data.nas_history) {
             const nasSection = document.createElement('div');
             nasSection.className = 'nas-section';
-            nasSection.innerHTML = `
-                <h2 class="section-title"><i class="fas fa-server"></i><span>NAS 系统状态</span></h2>
-                <div class="nas-info-grid">
-                    <div class="nas-info-card"><i class="fas fa-power-off nas-info-icon"></i><div class="nas-info-details"><div class="nas-info-label">启动于</div><div id="nas-boot-time" class="nas-info-value">...</div></div></div>
-                    <div class="nas-info-card"><i class="fas fa-history nas-info-icon"></i><div class="nas-info-details"><div class="nas-info-label">已运行</div><div id="nas-uptime" class="nas-info-value">...</div></div></div>
-                </div>
-                <div class="nas-stats-grid" id="nas-realtime-stats"></div>
-                <div class="charts-grid">
-                    <div class="chart-container"><div class="chart-header"><h3 class="chart-title">CPU 使用率 (近7日)</h3></div><div class="nas-chart-wrapper"><canvas id="nasCpuHistoryChart"></canvas></div></div>
-                    <div class="chart-container"><div class="chart-header"><h3 class="chart-title">网络流量增长 (近7日)</h3></div><div class="nas-chart-wrapper"><canvas id="nasNetworkHistoryChart"></canvas></div></div>
-                </div>
-            `;
+            nasSection.innerHTML = `<h2 class="section-title"><i class="fas fa-server"></i><span>NAS 系统状态</span></h2> <div class="nas-info-grid"> <div class="nas-info-card"><i class="fas fa-power-off nas-info-icon"></i><div class="nas-info-details"><div class="nas-info-label">启动于</div><div id="nas-boot-time" class="nas-info-value">...</div></div></div> <div class="nas-info-card"><i class="fas fa-history nas-info-icon"></i><div class="nas-info-details"><div class="nas-info-label">已运行</div><div id="nas-uptime" class="nas-info-value">...</div></div></div> </div> <div class="nas-stats-grid" id="nas-realtime-stats"></div> <div class="charts-grid"> <div class="chart-container"><div class="chart-header"><h3 class="chart-title">CPU 使用率</h3></div><div class="nas-chart-wrapper"><canvas id="nasCpuHistoryChart"></canvas></div></div> <div class="chart-container"><div class="chart-header"><h3 class="chart-title">网络流量</h3></div><div class="nas-chart-wrapper"><canvas id="nasNetworkHistoryChart"></canvas></div></div> </div>`;
             container.appendChild(nasSection);
             if (data.nas_stats) renderNasProgressBars(data.nas_stats);
             if (data.nas_history) renderNasHistoryCharts(data.nas_history);
         }
-        
         if (data.monitors) {
             const monitors = data.monitors.filter(m => m.type === 1 || m.type === 2);
             monitorDataCache = monitors;
-            
             let upCount = 0, downCount = 0, warningCount = 0, totalUptime = 0;
             monitors.forEach(m => {
                 const statusClass = (STATUS_MAP[m.status] || {}).class || 'status-warning';
@@ -166,53 +144,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 else warningCount++;
                 totalUptime += parseFloat(m.custom_uptime_ratios?.split('-')[0] || m.all_time_uptime_ratio || 0);
             });
-
             const servicesHTML = monitors.map(monitor => {
                 const status = STATUS_MAP[monitor.status] || { text: '未知', class: 'status-warning', icon: 'fa-question-circle' };
-                return `<div class="service-card" id="monitor-card-${monitor.id}">
-                            <div class="service-card-header" onclick="toggleDetailChart(${monitor.id})">
-                                <div class="service-header">
-                                    <div class="service-name">${monitor.friendly_name} <i class="fas fa-chevron-down"></i></div>
-                                    <div class="service-status ${status.class}"><i class="fas ${status.icon}"></i> ${status.text}</div>
-                                </div>
-                            </div>
-                            <div class="service-details">
-                               <div class="service-details-content">
-                                 <div class="detail-chart-container"><canvas id="detail-chart-${monitor.id}"></canvas></div>
-                               </div>
-                            </div>
-                        </div>`;
+                return `<div class="service-card" id="monitor-card-${monitor.id}"> <div class="service-card-header" onclick="toggleDetailChart(${monitor.id})"> <div class="service-header"> <div class="service-name">${monitor.friendly_name} <i class="fas fa-chevron-down"></i></div> <div class="service-status ${status.class}"><i class="fas ${status.icon}"></i> ${status.text}</div> </div> </div> <div class="service-details"> <div class="service-details-content"> <div class="detail-chart-container"><canvas id="detail-chart-${monitor.id}"></canvas></div> </div> </div> </div>`;
             }).join('');
-            
             const uptimeContainer = document.createElement('div');
             uptimeContainer.id = 'uptime-robot-container';
-            uptimeContainer.innerHTML = `
-                <header>
-                    <div class="logo"><i class="fas fa-heartbeat"></i><div class="logo-text">服务状态监控</div></div>
-                    <p class="subtitle">基于 UptimeRobot API 的实时监控仪表盘</p>
-                </header>
-                <div class="status-summary">
-                    <div class="summary-card status"><div class="card-icon"><i class="fas fa-check-circle"></i></div><div class="card-title">正常运行</div><div class="card-value">${upCount}</div></div>
-                    <div class="summary-card uptime"><div class="card-icon"><i class="fas fa-chart-line"></i></div><div class="card-title">平均运行率</div><div class="card-value">${monitors.length > 0 ? (totalUptime / monitors.length).toFixed(2) : '0'}%</div></div>
-                    <div class="summary-card incidents"><div class="card-icon"><i class="fas fa-times-circle"></i></div><div class="card-title">当前故障</div><div class="card-value">${downCount}</div></div>
-                </div>
-                <div class="services-grid">
-                    <div class="services-header"><span>网站监控列表 (点击展开图表)</span></div>
-                    <div id="services-list">${servicesHTML || '<p style="padding: 20px;">没有找到网站监控服务。</p>'}</div>
-                </div>
-                <div class="charts-section">
-                    <h2 class="section-title"><i class="fas fa-chart-bar"></i><span>网站状态总览</span></h2>
-                    <div class="charts-grid">
-                        <div class="chart-container"><div class="chart-header"><h3 class="chart-title">服务状态分布</h3></div><div class="chart-wrapper"><canvas id="statusChart"></canvas></div></div>
-                        <div class="chart-container"><div class="chart-header"><h3 class="chart-title">平均响应时间</h3></div><div class="chart-wrapper"><canvas id="responseTimeChart"></canvas></div></div>
-                    </div>
-                </div>
-            `;
+            uptimeContainer.innerHTML = `<header> <div class="logo"><i class="fas fa-heartbeat"></i><div class="logo-text">服务状态监控</div></div> <p class="subtitle">基于 UptimeRobot API 的实时监控仪表盘</p> </header> <div class="status-summary"> <div class="summary-card status"><div class="card-icon"><i class="fas fa-check-circle"></i></div><div class="card-title">正常运行</div><div class="card-value">${upCount}</div></div> <div class="summary-card uptime"><div class="card-icon"><i class="fas fa-chart-line"></i></div><div class="card-title">平均运行率</div><div class="card-value">${monitors.length > 0 ? (totalUptime / monitors.length).toFixed(2) : '0'}%</div></div> <div class="summary-card incidents"><div class="card-icon"><i class="fas fa-times-circle"></i></div><div class="card-title">当前故障</div><div class="card-value">${downCount}</div></div> </div> <div class="services-grid"> <div class="services-header"><span>网站监控列表 (点击展开图表)</span></div> <div id="services-list">${servicesHTML || '<p style="padding: 20px;">没有找到网站监控服务。</p>'}</div> </div> <div class="charts-section"> <h2 class="section-title"><i class="fas fa-chart-bar"></i><span>网站状态总览</span></h2> <div class="charts-grid"> <div class="chart-container"><div class="chart-header"><h3 class="chart-title">服务状态分布</h3></div><div class="chart-wrapper"><canvas id="statusChart"></canvas></div></div> <div class="chart-container"><div class="chart-header"><h3 class="chart-title">平均响应时间</h3></div><div class="chart-wrapper"><canvas id="responseTimeChart"></canvas></div></div> </div> </div>`;
             container.appendChild(uptimeContainer);
             renderOverviewCharts(monitors, { up: upCount, down: downCount, warning: warningCount });
-        } else if (!data.nas_stats && !data.nas_history) {
-             showMonitoringError("没有找到任何监控服务数据。");
-        }
+        } else if (!data.nas_stats && !data.nas_history) { showMonitoringError("没有找到任何监控服务数据。"); }
     }
     
     function renderNasProgressBars(stats) {
@@ -223,10 +164,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const items = [{ icon: 'fa-microchip', label: 'CPU', data: stats.cpu }, { icon: 'fa-memory', label: '内存', data: stats.memory }, { icon: 'fa-compact-disc', label: '磁盘', data: stats.disk }];
         items.forEach(item => {
             if (item.data) {
-                 html += `<div class="nas-info-card">
-                    <div class="progress-bar-info" style="width:100%"><span class="progress-bar-label"><i class="fas ${item.icon}"></i> ${item.label}</span><span>${item.data.percent}%</span></div>
-                    <div class="progress-bar-bg" style="width:100%"><div class="progress-bar-fill" style="width: ${item.data.percent}%;"></div></div>
-                 </div>`;
+                 html += `<div class="nas-info-card"> <div class="progress-bar-info" style="width:100%"><span class="progress-bar-label"><i class="fas ${item.icon}"></i> ${item.label}</span><span>${item.data.percent}%</span></div> <div class="progress-bar-bg" style="width:100%"><div class="progress-bar-fill" style="width: ${item.data.percent}%;"></div></div> </div>`;
             }
         });
         container.innerHTML = html;
@@ -235,16 +173,14 @@ document.addEventListener('DOMContentLoaded', function() {
     function renderNasHistoryCharts(history) {
         if (nasCpuHistoryChart) nasCpuHistoryChart.destroy();
         if (nasNetworkHistoryChart) nasNetworkHistoryChart.destroy();
-
         const cpuCtx = document.getElementById('nasCpuHistoryChart')?.getContext('2d');
         if (cpuCtx && history.cpu && history.cpu.length > 0) {
-            nasCpuHistoryChart = new Chart(cpuCtx, { type: 'line', data: { datasets: [{ label: 'CPU Usage (%)', data: history.cpu.map(d => ({x: d.timestamp * 1000, y: d.usage})), borderColor: 'rgba(30, 136, 229, 0.7)', backgroundColor: 'rgba(30, 136, 229, 0.1)', borderWidth: 2, pointRadius: 0, tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day', tooltipFormat: 'yyyy-MM-dd HH:mm' } }, y: { beginAtZero: true, max: 100 } }, plugins: { legend: { display: false } } } });
+            nasCpuHistoryChart = new Chart(cpuCtx, { type: 'line', data: { datasets: [{ label: 'CPU Usage (%)', data: history.cpu.map(d => ({x: d.timestamp * 1000, y: d.usage})), borderColor: 'rgba(30, 136, 229, 0.7)', backgroundColor: 'rgba(30, 136, 229, 0.1)', borderWidth: 1.5, pointRadius: 0, tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, max: 100, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile } } } });
         }
-
         const netCtx = document.getElementById('nasNetworkHistoryChart')?.getContext('2d');
         if (netCtx && history.network && history.network.length > 0) {
-            const datasets = [{ iface: 'eth0', recv: 'eth0_recv', sent: 'eth0_sent', color: 'rgba(76, 175, 80, 0.7)'}, { iface: 'wlan0', recv: 'wlan0_recv', sent: 'wlan0_sent', color: 'rgba(255, 152, 0, 0.7)'}, { iface: 'docker0', recv: 'docker0_recv', sent: 'docker0_sent', color: 'rgba(156, 39, 176, 0.7)'}].map(config => ({ label: `${config.iface} 总流量`, data: history.network.map(d => ({ x: d.timestamp * 1000, y: ((d[config.recv] || 0) + (d[config.sent] || 0)) / 1024**3 })), borderColor: config.color, borderWidth: 2, pointRadius: 0, tension: 0.4, fill: false })).filter(ds => ds.data.some(d => d.y > 0));
-            nasNetworkHistoryChart = new Chart(netCtx, { type: 'line', data: { datasets: datasets }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day', tooltipFormat: 'yyyy-MM-dd' } }, y: { beginAtZero: true, title: { display: true, text: 'GB' } } }, plugins: { legend: { position: 'bottom' } } } });
+            const datasets = [{ iface: 'eth0', recv: 'eth0_recv', sent: 'eth0_sent', color: 'rgba(76, 175, 80, 0.7)'}, { iface: 'wlan0', recv: 'wlan0_recv', sent: 'wlan0_sent', color: 'rgba(255, 152, 0, 0.7)'}, { iface: 'docker0', recv: 'docker0_recv', sent: 'docker0_sent', color: 'rgba(156, 39, 176, 0.7)'}].map(config => ({ label: config.iface, data: history.network.map(d => ({ x: d.timestamp * 1000, y: ((d[config.recv] || 0) + (d[config.sent] || 0)) / 1024**3 })), borderColor: config.color, borderWidth: 1.5, pointRadius: 0, tension: 0.4, fill: false })).filter(ds => ds.data.some(d => d.y > 0));
+            nasNetworkHistoryChart = new Chart(netCtx, { type: 'line', data: { datasets: datasets }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, title: { display: !isMobile, text: 'GB' }, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } }, tooltip: { enabled: !isMobile } } } });
         }
     }
 
@@ -263,19 +199,19 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!ctx) return;
         if (Chart.getChart(ctx)) Chart.getChart(ctx).destroy();
         const chartData = monitor.response_times.map(rt => ({ x: rt.datetime * 1000, y: rt.value })).reverse();
-        new Chart(ctx, { type: 'line', data: { datasets: [{ label: '响应时间 (ms)', data: chartData, borderColor: 'rgba(30, 136, 229, 0.5)', backgroundColor: 'rgba(30, 136, 229, 0.1)', borderWidth: 2, tension: 0.3, fill: true, pointRadius: 1.5 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'hour' } }, y: { beginAtZero: true } }, plugins: { legend: { display: false } } } });
+        new Chart(ctx, { type: 'line', data: { datasets: [{ label: '响应时间 (ms)', data: chartData, borderColor: 'rgba(30, 136, 229, 0.5)', backgroundColor: 'rgba(30, 136, 229, 0.1)', borderWidth: 1, tension: 0.3, fill: true, pointRadius: 0 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'hour' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile } } } });
     }
 
     function renderOverviewCharts(monitors, counts) {
         const statusCtx = document.getElementById('statusChart')?.getContext('2d');
         if (statusCtx) {
             if (Chart.getChart(statusCtx)) Chart.getChart(statusCtx).destroy();
-            new Chart(statusCtx, { type: 'doughnut', data: { labels: ['正常', '警告', '故障'], datasets: [{ data: [counts.up, counts.warning, counts.down], backgroundColor: [ 'rgba(76, 175, 80, 0.8)', 'rgba(255, 152, 0, 0.8)', 'rgba(244, 67, 54, 0.8)' ], borderWidth: 2 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } } });
+            new Chart(statusCtx, { type: 'doughnut', data: { labels: ['正常', '警告', '故障'], datasets: [{ data: [counts.up, counts.warning, counts.down], backgroundColor: [ 'rgba(76, 175, 80, 0.8)', 'rgba(255, 152, 0, 0.8)', 'rgba(244, 67, 54, 0.8)' ], borderWidth: 1.5 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } } } } });
         }
         const rtCtx = document.getElementById('responseTimeChart')?.getContext('2d');
         if (rtCtx) {
             if (Chart.getChart(rtCtx)) Chart.getChart(rtCtx).destroy();
-            new Chart(rtCtx, { type: 'bar', data: { labels: monitors.map(m => m.friendly_name.substring(0, 12) + (m.friendly_name.length > 12 ? '...' : '')), datasets: [{ label: '响应时间 (ms)', data: monitors.map(m => m.response_times?.[0]?.value || 0), backgroundColor: 'rgba(30, 136, 229, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } } });
+            new Chart(rtCtx, { type: 'bar', data: { labels: monitors.map(m => m.friendly_name.substring(0, isMobile ? 5 : 12) + (m.friendly_name.length > (isMobile ? 5 : 12) ? '...' : '')), datasets: [{ label: '响应时间 (ms)', data: monitors.map(m => m.response_times?.[0]?.value || 0), backgroundColor: 'rgba(30, 136, 229, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile } } } });
         }
     }
 
@@ -286,11 +222,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
             if (!data || (data.stat !== 'ok' && !data.nas_stats)) throw new Error(`API 返回错误: ${(data.error || {}).message || '未知'}`);
             return data;
-        } catch (error) {
-            console.error('获取监控数据失败:', error);
-            showMonitoringError(error.message);
-            return null;
-        }
+        } catch (error) { console.error('获取监控数据失败:', error); showMonitoringError(error.message); return null; }
     }
 
     function showMonitoringError(message) {
@@ -300,60 +232,41 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function initMonitoring() {
         const container = document.getElementById('monitoring-container');
-        if (!container.innerHTML.trim()) {
-             container.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><p>正在加载全部监控数据...</p></div>`;
-        }
+        if (!container.innerHTML.trim()) { container.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><p>正在加载全部监控数据...</p></div>`; }
         const data = await fetchMonitoringData();
         if (data) renderMonitoringPage(data);
     }
 
-    // --- 【新增】 5. 天气仪表盘功能 ---
-    const sourceStyles = {
-        'HefengAPI': { label: 'API', tempColor: 'rgb(255, 99, 132)', humidColor: 'rgb(255, 159, 64)' },
-        'ESP8266':   { label: '设备', tempColor: 'rgb(54, 162, 235)', humidColor: 'rgb(75, 192, 192)' },
-        'default':   { label: '其他', tempColor: 'rgb(201, 203, 207)', humidColor: 'rgb(153, 102, 255)' }
-    };
+    // --- 5. 天气仪表盘功能 ---
+    const sourceStyles = { 'HefengAPI': { label: 'API', tempColor: 'rgb(255, 99, 132)', humidColor: 'rgb(255, 159, 64)' }, 'ESP8266':   { label: '设备', tempColor: 'rgb(54, 162, 235)', humidColor: 'rgb(75, 192, 192)' }, 'default':   { label: '其他', tempColor: 'rgb(201, 203, 207)', humidColor: 'rgb(153, 102, 255)' } };
 
     async function fetchWeatherData() {
         const loadingMessage = document.getElementById('weather-loading-message');
         const cardsContainer = document.getElementById('latest-weather-cards');
         const chartsContainer = document.getElementById('weather-charts-container');
-
         try {
             const response = await fetch(WEATHER_API);
             if (!response.ok) throw new Error(`无法从 Worker 获取数据，状态码: ${response.status}`);
             const data = await response.json();
-            
             loadingMessage.style.display = 'none';
             cardsContainer.style.display = 'flex';
             chartsContainer.style.display = 'flex';
-
             displayLatestWeather(data.latest);
             displayTrendCharts(data.history);
-
         } catch (error) {
             console.error('加载天气数据时发生错误:', error);
-            loadingMessage.innerHTML = `<p style="color: red;">无法加载天气数据。请检查 Worker URL (${WEATHER_API}) 是否正确，或查看控制台获取详细信息。</p>`;
+            loadingMessage.innerHTML = `<div class="error-state"><h2>加载天气数据失败</h2><p>${error.message}</p></div>`;
         }
     }
 
     function displayLatestWeather(latestData) {
         const container = document.getElementById('latest-weather-cards');
         container.innerHTML = ''; 
-        if (!latestData || latestData.length === 0) {
-            container.innerHTML = "<p>暂无最新的天气数据。</p>";
-            return;
-        }
+        if (!latestData || latestData.length === 0) { container.innerHTML = "<p>暂无最新的天气数据。</p>"; return; }
         for (const cityData of latestData) {
             const card = document.createElement('div');
             card.className = 'weather-card';
-            card.innerHTML = `
-                <h2>${cityData.city_name}</h2>
-                <p class="weather-text">${cityData.weather_text}</p>
-                <p><strong>温度:</strong> ${cityData.temperature}°C (体感 ${cityData.feels_like}°C)</p>
-                <p><strong>相对湿度:</strong> ${cityData.humidity}%</p>
-                <p class="timestamp">更新于: ${new Date(cityData.observation_time).toLocaleString()}</p>
-            `;
+            card.innerHTML = `<h2>${cityData.city_name}</h2> <p class="weather-text">${cityData.weather_text}</p> <p><strong>温度:</strong> ${cityData.temperature}°C (体感 ${cityData.feels_like}°C)</p> <p><strong>相对湿度:</strong> ${cityData.humidity}%</p> <p class="timestamp">更新于: ${new Date(cityData.observation_time).toLocaleString()}</p>`;
             container.appendChild(card);
         }
     }
@@ -362,20 +275,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const container = document.getElementById('weather-charts-container');
         container.innerHTML = '';
         if (!historyData || historyData.length === 0) return;
-        
         const cities = {};
         for (const record of historyData) {
             if (!cities[record.city_name]) cities[record.city_name] = [];
             cities[record.city_name].push(record);
         }
-
         for (const cityName in cities) {
             const chartContainer = document.createElement('div');
             chartContainer.className = 'weather-chart-container';
             const canvas = document.createElement('canvas');
             chartContainer.appendChild(canvas);
             container.appendChild(chartContainer);
-
             const datasets = [];
             const cityHistory = cities[cityName];
             const sources = {};
@@ -383,36 +293,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!sources[record.source]) sources[record.source] = [];
                 sources[record.source].push(record);
             }
-
             for (const sourceName in sources) {
                 const style = sourceStyles[sourceName] || sourceStyles.default;
                 const sourceData = sources[sourceName];
-                datasets.push({
-                    label: `温度 - ${style.label} (°C)`,
-                    data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.temperature })),
-                    borderColor: style.tempColor, backgroundColor: style.tempColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y', tension: 0.1
-                });
-                datasets.push({
-                    label: `湿度 - ${style.label} (%)`,
-                    data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.humidity })),
-                    borderColor: style.humidColor, backgroundColor: style.humidColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y1', borderDash: [5, 5], tension: 0.1
-                });
+                datasets.push({ label: `温度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.temperature })), borderColor: style.tempColor, backgroundColor: style.tempColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y', tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
+                datasets.push({ label: `湿度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.humidity })), borderColor: style.humidColor, backgroundColor: style.humidColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y1', borderDash: [5, 5], tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
             }
-
-            new Chart(canvas, {
-                type: 'line',
-                data: { datasets: datasets },
-                options: {
-                    responsive: true,
-                    interaction: { mode: 'index', intersect: false, },
-                    plugins: { title: { display: true, text: `${cityName} - 24小时趋势`, font: { size: 18 } } },
-                    scales: {
-                        x: { type: 'time', time: { unit: 'hour', tooltipFormat: 'yyyy-MM-dd HH:mm', displayFormats: { hour: 'HH:mm' } }, title: { display: true, text: '时间' } },
-                        y: { type: 'linear', display: true, position: 'left', title: { display: true, text: '温度 (°C)' } },
-                        y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: '相对湿度 (%)' }, grid: { drawOnChartArea: false } }
-                    }
-                }
-            });
+            new Chart(canvas, { type: 'line', data: { datasets: datasets }, options: { responsive: true, interaction: { mode: 'index', intersect: false, }, plugins: { title: { display: true, text: `${cityName} - 24小时趋势`, font: { size: isMobile ? 14 : 18 } }, legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } } }, scales: { x: { type: 'time', time: { unit: 'hour', tooltipFormat: 'HH:mm', displayFormats: { hour: 'HH:mm' } }, title: { display: false }, ticks: { font: { size: 10 } } }, y: { type: 'linear', display: true, position: 'left', title: { display: !isMobile, text: '温度 (°C)' }, ticks: { font: { size: 10 } } }, y1: { type: 'linear', display: true, position: 'right', title: { display: !isMobile, text: '湿度 (%)' }, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } } } } });
         }
     }
 
