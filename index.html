@@ -45,6 +45,8 @@
             <button class="tab-button active" data-tab="tab-links"><i class="fas fa-star"></i> 常用网站</button>
             <button class="tab-button" data-tab="tab-monitoring"><i class="fas fa-heartbeat"></i> 服务监控</button>
             <button class="tab-button" data-tab="tab-notifications"><i class="fas fa-bell"></i> 我的通知</button>
+            <!-- 【新增】天气仪表盘的选项卡按钮 -->
+            <button class="tab-button" data-tab="tab-weather"><i class="fas fa-cloud-sun"></i> 天气仪表盘</button>
         </div>
 
         <!-- 选项卡内容区域 -->
@@ -66,7 +68,7 @@
                         <a href="https://sync.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> Syncthing</a>
                         <a href="https://stv.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> SgwTV</a>
                         <a href="https://ypm.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> YesMusic</a>
-                        <a href="http://100.100.1.2:88/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> Sunpanel</a>
+                        <a href="https://up.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> UpWeb</a>
                         <a href="https://dash.cloudflare.com/7dcad7e5c925385adde3ce2a3f5bb271/home/domains" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> Cloudflare</a>
                         <a href="https://tao.111312.xyz/#/home" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> Taosync</a>
                         <a href="https://d8u4-my.sharepoint.com/my" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> Onedrive</a>
@@ -92,26 +94,12 @@
         
         <div class="tab-content" id="tab-monitoring">
             <div id="monitoring-container">
-                <!-- NAS 模块的 HTML 骨架 -->
-                <div class="nas-section" id="nas-section-container" style="display: none;">
-                    <h2 class="section-title"><i class="fas fa-server"></i><span>NAS 系统状态</span></h2>
-                    <div class="nas-info-grid">
-                        <div class="nas-info-card"><i class="fas fa-power-off nas-info-icon"></i><div class="nas-info-details"><div class="nas-info-label">启动于</div><div id="nas-boot-time" class="nas-info-value">...</div></div></div>
-                        <div class="nas-info-card"><i class="fas fa-history nas-info-icon"></i><div class="nas-info-details"><div class="nas-info-label">已运行</div><div id="nas-uptime" class="nas-info-value">...</div></div></div>
-                    </div>
-                    <div class="nas-stats-grid" id="nas-realtime-stats"></div>
-                    <div class="charts-grid">
-                        <div class="chart-container"><div class="chart-header"><h3 class="chart-title">CPU 使用率 (近7日)</h3></div><div class="nas-chart-wrapper"><canvas id="nasCpuHistoryChart"></canvas></div></div>
-                        <div class="chart-container"><div class="chart-header"><h3 class="chart-title">网络流量增长 (近7日)</h3></div><div class="nas-chart-wrapper"><canvas id="nasNetworkHistoryChart"></canvas></div></div>
-                    </div>
-                </div>
-                <!-- UptimeRobot 模块将由 JS 动态插入到这里 -->
+                <!-- 服务监控内容将由 JS 动态生成 -->
             </div>
         </div>
 
         <div class="tab-content" id="tab-notifications">
-            <!-- 我的通知内容 -->
-             <div id="notifications-container">
+            <div id="notifications-container">
                 <header class="content-header">
                     <h1>我的通知和短信</h1>
                     <button class="btn" id="refresh-notifications-btn">
@@ -127,6 +115,20 @@
                 <div id="notifications-status-message"></div>
             </div>
         </div>
+
+        <!-- 【新增】天气仪表盘的内容容器 -->
+        <div class="tab-content" id="tab-weather">
+            <div id="weather-dashboard-container">
+                <div id="weather-loading-message">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>正在加载天气数据...</p>
+                    </div>
+                </div>
+                <div id="latest-weather-cards" style="display: none;"></div>
+                <div id="weather-charts-container" style="display: none;"></div>
+            </div>
+        </div>
         
         <footer>
             <p>© 2025 WanChuan | 让您的网络之旅更高效 | 已收录 <span id="site-count">0</span> 个优质网站</p>
@@ -136,21 +138,5 @@
     <script src="script.js"></script>
     <script type="text/javascript" src="https://myhkw.cn/player/js/jquery.min.js"></script>
     <script src="https://myhkw.cn/api/player/demo" id="myhk" key="demo" m="1" au="1"></script>
-    <!-- 将以下代码放置于你的网页中 -->
-<script 
-  data-host-id="7" 
-  data-auto-reg="true" 
-  data-login-token="" 
-  data-title="" 
-  data-logo="" 
-  data-theme-color="#1fe1f9" 
-  data-close-width="48" 
-  data-close-height="48" 
-  data-open-width="380" 
-  data-open-height="680" 
-  data-welcome="Your custom welcome text" 
-  src="https://lt.111312.xyz/widget.js" 
-  async 
-></script>
 </body>
 </html>
