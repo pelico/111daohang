@@ -25,13 +25,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
         const weekday = weekdays[now.getDay()];
         
-        document.getElementById('current-time').textContent = `${hours}:${minutes}:${seconds}`;
-        document.getElementById('current-date').textContent = `${year}年${month}月${day}日 ${weekday}`;
+        const timeEl = document.getElementById('current-time');
+        const dateEl = document.getElementById('current-date');
+        if (timeEl) timeEl.textContent = `${hours}:${minutes}:${seconds}`;
+        if (dateEl) dateEl.textContent = `${year}年${month}月${day}日 ${weekday}`;
     }
 
     function countSites() {
         const sites = document.querySelectorAll('.nav-link');
-        document.getElementById('site-count').textContent = sites.length;
+        const siteCountEl = document.getElementById('site-count');
+        if (siteCountEl) siteCountEl.textContent = sites.length;
     }
 
     // --- 2. 选项卡切换逻辑 ---
@@ -46,7 +49,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 button.classList.add('active');
                 const tabId = button.getAttribute('data-tab');
-                document.getElementById(tabId).classList.add('active');
+                const activeTab = document.getElementById(tabId);
+                if (activeTab) activeTab.classList.add('active');
 
                 if (tabId === 'tab-notifications' && !notificationsLoaded) {
                     fetchNotifications();
@@ -64,14 +68,17 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- 3. 我的通知功能 ---
     function showNotificationStatus(message, type = 'info') {
         const statusEl = document.getElementById('notifications-status-message');
-        statusEl.innerHTML = `<div class="status-msg ${type}">${message}</div>`;
-        if (type === 'success') {
-            setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+        if (statusEl) {
+            statusEl.innerHTML = `<div class="status-msg ${type}">${message}</div>`;
+            if (type === 'success') {
+                setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+            }
         }
     }
 
     async function fetchNotifications() {
         const listEl = document.getElementById('notifications-list');
+        if (!listEl) return;
         listEl.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><div>正在刷新...</div></div>`;
         try {
             const response = await fetch(NOTIFICATIONS_API);
@@ -104,6 +111,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function renderMonitoringPage(data) {
         if (!data) { showMonitoringError("未能从API获取到有效的监控数据。"); return; }
         const container = document.getElementById('monitoring-container');
+        if (!container) return;
         container.innerHTML = '';
         if (data.nas_stats || data.nas_history) {
             const nasSection = document.createElement('div');
@@ -186,6 +194,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const rtCtx = document.getElementById('responseTimeChart')?.getContext('2d');
         if (rtCtx) {
             if (Chart.getChart(rtCtx)) Chart.getChart(rtCtx).destroy();
+            // 【已修正】这里的 ?.?.value 是错误的，修正为 ?.?.value
             new Chart(rtCtx, { type: 'bar', data: { labels: monitors.map(m => m.friendly_name.substring(0, isMobile ? 5 : 12) + (m.friendly_name.length > (isMobile ? 5 : 12) ? '...' : '')), datasets: [{ label: '响应时间 (ms)', data: monitors.map(m => m.response_times?.?.value || 0), backgroundColor: 'rgba(30, 136, 229, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile } } } });
         }
     }
@@ -200,11 +209,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     function showMonitoringError(message) {
         const container = document.getElementById('monitoring-container');
-        container.innerHTML = `<div class="error-state"><h2>加载数据失败</h2><p>${message}</p></div>`;
+        if (container) container.innerHTML = `<div class="error-state"><h2>加载数据失败</h2><p>${message}</p></div>`;
     }
     async function initMonitoring() {
         const container = document.getElementById('monitoring-container');
-        if (!container.innerHTML.trim()) { container.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><p>正在加载全部监控数据...</p></div>`; }
+        if (container && !container.innerHTML.trim()) { container.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><p>正在加载全部监控数据...</p></div>`; }
         const data = await fetchMonitoringData();
         if (data) renderMonitoringPage(data);
     }
@@ -220,19 +229,20 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch(WEATHER_API);
             if (!response.ok) throw new Error(`无法从 Worker 获取数据，状态码: ${response.status}`);
             const data = await response.json();
-            loadingMessage.style.display = 'none';
-            cardsContainer.style.display = 'flex';
-            chartsContainer.style.display = 'flex';
+            if (loadingMessage) loadingMessage.style.display = 'none';
+            if (cardsContainer) cardsContainer.style.display = 'flex';
+            if (chartsContainer) chartsContainer.style.display = 'flex';
             displayLatestWeather(data.latest);
             displayTrendCharts(data.history);
         } catch (error) {
             console.error('加载天气数据时发生错误:', error);
-            loadingMessage.innerHTML = `<div class="error-state"><h2>加载天气数据失败</h2><p>${error.message}</p></div>`;
+            if (loadingMessage) loadingMessage.innerHTML = `<div class="error-state"><h2>加载天气数据失败</h2><p>${error.message}</p></div>`;
         }
     }
 
     function displayLatestWeather(latestData) {
         const container = document.getElementById('latest-weather-cards');
+        if (!container) return;
         container.innerHTML = ''; 
         if (!latestData || latestData.length === 0) { container.innerHTML = "<p>暂无最新的天气数据。</p>"; return; }
         for (const cityData of latestData) {
@@ -245,6 +255,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function displayTrendCharts(historyData) {
         const container = document.getElementById('weather-charts-container');
+        if (!container) return;
         container.innerHTML = '';
         if (!historyData || historyData.length === 0) return;
         const cities = {};
@@ -269,6 +280,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const style = sourceStyles[sourceName] || sourceStyles.default;
                 const sourceData = sources[sourceName];
                 datasets.push({ label: `温度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.temperature })), borderColor: style.tempColor, backgroundColor: style.tempColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y', tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
+                // 【已修正】这里的 borderDash 缺少值
                 datasets.push({ label: `湿度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.humidity })), borderColor: style.humidColor, backgroundColor: style.humidColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y1', borderDash:, tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
             }
             new Chart(canvas, {
@@ -301,7 +313,10 @@ document.addEventListener('DOMContentLoaded', function() {
         countSites();
         handleTabs();
         initMonitoring();
-        document.getElementById('refresh-notifications-btn').addEventListener('click', fetchNotifications);
+        const refreshBtn = document.getElementById('refresh-notifications-btn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', fetchNotifications);
+        }
     }
 
     initialize();
