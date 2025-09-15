@@ -130,7 +130,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (statusClass === 'status-up') upCount++;
                 else if (statusClass === 'status-down') downCount++;
                 else warningCount++;
-                totalUptime += parseFloat(m.custom_uptime_ratios?.split('-') || m.all_time_uptime_ratio || 0);
+                totalUptime += parseFloat(m.custom_uptime_ratios?.split('-')[0] || m.all_time_uptime_ratio || 0);
             });
             const servicesHTML = monitors.map(monitor => {
                 const status = STATUS_MAP[monitor.status] || { text: '未知', class: 'status-warning', icon: 'fa-question-circle' };
@@ -154,7 +154,7 @@ document.addEventListener('DOMContentLoaded', function() {
                  html += `<div class="nas-info-card"> <div class="progress-bar-info" style="width:100%"><span class="progress-bar-label"><i class="fas ${item.icon}"></i> ${item.label}</span><span>${item.data.percent}%</span></div> <div class="progress-bar-bg" style="width:100%"><div class="progress-bar-fill" style="width: ${item.data.percent}%;"></div></div> </div>`;
             }
         });
-        container.innerHTML = html;
+        if (container) container.innerHTML = html;
     }
     function renderNasHistoryCharts(history) {
         if (nasCpuHistoryChart) nasCpuHistoryChart.destroy();
@@ -195,7 +195,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (rtCtx) {
             if (Chart.getChart(rtCtx)) Chart.getChart(rtCtx).destroy();
             // 【已修正】这里的 ?.?.value 是错误的，修正为 ?.?.value
-            new Chart(rtCtx, { type: 'bar', data: { labels: monitors.map(m => m.friendly_name.substring(0, isMobile ? 5 : 12) + (m.friendly_name.length > (isMobile ? 5 : 12) ? '...' : '')), datasets: [{ label: '响应时间 (ms)', data: monitors.map(m => m.response_times?.?.value || 0), backgroundColor: 'rgba(30, 136, 229, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile } } } });
+            new Chart(rtCtx, { type: 'bar', data: { labels: monitors.map(m => m.friendly_name.substring(0, isMobile ? 5 : 12) + (m.friendly_name.length > (isMobile ? 5 : 12) ? '...' : '')), datasets: [{ label: '响应时间 (ms)', data: monitors.map(m => m.response_times?.[0]?.value || 0), backgroundColor: 'rgba(30, 136, 229, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile } } } });
         }
     }
     async function fetchMonitoringData() {
@@ -281,7 +281,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const sourceData = sources[sourceName];
                 datasets.push({ label: `温度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.temperature })), borderColor: style.tempColor, backgroundColor: style.tempColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y', tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
                 // 【已修正】这里的 borderDash 缺少值
-                datasets.push({ label: `湿度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.humidity })), borderColor: style.humidColor, backgroundColor: style.humidColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y1', borderDash:, tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
+                datasets.push({ label: `湿度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.humidity })), borderColor: style.humidColor, backgroundColor: style.humidColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y1', borderDash: [5, 5], tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
             }
             new Chart(canvas, {
                 type: 'line',
