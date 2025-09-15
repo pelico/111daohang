@@ -122,7 +122,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (statusClass === 'status-up') upCount++;
                 else if (statusClass === 'status-down') downCount++;
                 else warningCount++;
-                totalUptime += parseFloat(m.custom_uptime_ratios?.split('-')[0] || m.all_time_uptime_ratio || 0);
+                totalUptime += parseFloat(m.custom_uptime_ratios?.split('-') || m.all_time_uptime_ratio || 0);
             });
             const servicesHTML = monitors.map(monitor => {
                 const status = STATUS_MAP[monitor.status] || { text: '未知', class: 'status-warning', icon: 'fa-question-circle' };
@@ -186,7 +186,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const rtCtx = document.getElementById('responseTimeChart')?.getContext('2d');
         if (rtCtx) {
             if (Chart.getChart(rtCtx)) Chart.getChart(rtCtx).destroy();
-            new Chart(rtCtx, { type: 'bar', data: { labels: monitors.map(m => m.friendly_name.substring(0, isMobile ? 5 : 12) + (m.friendly_name.length > (isMobile ? 5 : 12) ? '...' : '')), datasets: [{ label: '响应时间 (ms)', data: monitors.map(m => m.response_times?.[0]?.value || 0), backgroundColor: 'rgba(30, 136, 229, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile } } } });
+            new Chart(rtCtx, { type: 'bar', data: { labels: monitors.map(m => m.friendly_name.substring(0, isMobile ? 5 : 12) + (m.friendly_name.length > (isMobile ? 5 : 12) ? '...' : '')), datasets: [{ label: '响应时间 (ms)', data: monitors.map(m => m.response_times?.?.value || 0), backgroundColor: 'rgba(30, 136, 229, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile } } } });
         }
     }
     async function fetchMonitoringData() {
@@ -208,7 +208,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const data = await fetchMonitoringData();
         if (data) renderMonitoringPage(data);
     }
-
 
     // --- 5. 天气仪表盘功能 ---
     const sourceStyles = { 'HefengAPI': { label: 'API', tempColor: 'rgb(255, 99, 132)', humidColor: 'rgb(255, 159, 64)' }, 'ESP8266':   { label: '设备', tempColor: 'rgb(54, 162, 235)', humidColor: 'rgb(75, 192, 192)' }, 'default':   { label: '其他', tempColor: 'rgb(201, 203, 207)', humidColor: 'rgb(153, 102, 255)' } };
@@ -270,7 +269,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const style = sourceStyles[sourceName] || sourceStyles.default;
                 const sourceData = sources[sourceName];
                 datasets.push({ label: `温度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.temperature })), borderColor: style.tempColor, backgroundColor: style.tempColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y', tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
-                datasets.push({ label: `湿度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.humidity })), borderColor: style.humidColor, backgroundColor: style.humidColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y1', borderDash: [5, 5], tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
+                datasets.push({ label: `湿度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.humidity })), borderColor: style.humidColor, backgroundColor: style.humidColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y1', borderDash:, tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
             }
             new Chart(canvas, {
                 type: 'line',
@@ -306,4 +305,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     initialize();
-});```
+});
