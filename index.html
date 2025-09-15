@@ -18,6 +18,13 @@
                     <div class="time" id="current-time">00:00:00</div>
                     <div class="date" id="current-date">2023年1月1日 星期一</div>
                 </div>
+                <div class="weather">
+                    <i class="fas fa-sun"></i>
+                    <div class="weather-info">
+                        <div class="temp">28°C</div>
+                        <div class="city">北京 · 晴</div>
+                    </div>
+                </div>
             </div>
             <div class="search-container">
                 <form class="search-box" action="https://www.baidu.com/s" method="get" target="_blank">
@@ -29,7 +36,7 @@
         
         <!-- 主标题 -->
         <div class="main-title">
-            <h1>Valar Morghulis</h1>
+            <h1>Valar Morghulis 凡人皆有一死</h1>
             <p>想到啥赶紧干</p>
         </div>
 
@@ -38,11 +45,13 @@
             <button class="tab-button active" data-tab="tab-links"><i class="fas fa-star"></i> 常用网站</button>
             <button class="tab-button" data-tab="tab-monitoring"><i class="fas fa-heartbeat"></i> 服务监控</button>
             <button class="tab-button" data-tab="tab-notifications"><i class="fas fa-bell"></i> 我的通知</button>
+            <!-- 【新增】天气仪表盘的选项卡按钮 -->
             <button class="tab-button" data-tab="tab-weather"><i class="fas fa-cloud-sun"></i> 天气仪表盘</button>
         </div>
 
         <!-- 选项卡内容区域 -->
         <div class="tab-content active" id="tab-links">
+            <!-- 导航链接内容 -->
              <div class="nav-grid">
                 <div class="nav-category">
                     <div class="category-title">
@@ -107,6 +116,7 @@
             </div>
         </div>
 
+        <!-- 【新增】天气仪表盘的内容容器 -->
         <div class="tab-content" id="tab-weather">
             <div id="weather-dashboard-container">
                 <div id="weather-loading-message">
