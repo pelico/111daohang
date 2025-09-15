@@ -51,11 +51,6 @@ body {
 .time-weather { display: flex; align-items: center; gap: 25px; }
 .time { font-size: 1.5rem; font-weight: 700; color: var(--primary-color); text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 .date { font-size: 1rem; color: var(--text-light); margin-top: 5px; font-weight: 500; }
-.weather { display: flex; align-items: center; gap: 10px; background: linear-gradient(120deg, #e0f7fa, #bbdefb); padding: 8px 20px; border-radius: 50px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-.weather i { color: var(--warning-color); font-size: 1.5rem; }
-.weather-info { display: flex; flex-direction: column; }
-.temp { font-weight: 700; color: var(--primary-dark); }
-.city { font-size: 0.9rem; color: var(--text-light); font-weight: 500; }
 
 .search-container { flex-grow: 1; max-width: 650px; margin: 0 30px; }
 .search-box { display: flex; height: 55px; border-radius: 30px; overflow: hidden; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15); transition: all 0.3s ease; }
@@ -81,7 +76,7 @@ body {
     margin-bottom: 30px;
     border-bottom: 2px solid rgba(255,255,255,0.3);
     padding-bottom: 15px;
-    flex-wrap: wrap; /* 允许换行 */
+    flex-wrap: wrap;
 }
 .tab-button {
     padding: 12px 25px;
@@ -280,17 +275,12 @@ footer {
     border-top: 1px solid rgba(255,255,255,0.2);
 }
 
-/*
- * ===============================================
- * === 【核心】移动端响应式设计 (屏幕宽度 <= 768px) ===
- * ===============================================
- */
+/* --- 移动端响应式设计 --- */
 @media (max-width: 768px) {
     body {
-        padding: 10px; /* 减小页面边距 */
+        padding: 10px;
     }
 
-    /* --- 顶部栏优化 --- */
     .top-bar {
         flex-direction: column;
         gap: 15px;
@@ -298,15 +288,12 @@ footer {
     }
     .time-weather {
         width: 100%;
-        justify-content: space-between;
+        justify-content: flex-start;
         gap: 10px;
     }
     .time-info { text-align: left; }
     .time { font-size: 1.2rem; }
     .date { font-size: 0.8rem; }
-    .weather { padding: 5px 10px; }
-    .weather i { font-size: 1.2rem; }
-    .temp, .city { font-size: 0.8rem; }
     .search-container {
         width: 100%;
         margin: 0;
@@ -314,7 +301,6 @@ footer {
     .search-box { height: 45px; }
     .search-box input { font-size: 1rem; }
 
-    /* --- 标题和选项卡优化 --- */
     .main-title h1 { font-size: 2rem; }
     .main-title p { font-size: 1rem; }
     .tabs {
@@ -328,20 +314,17 @@ footer {
         gap: 8px;
     }
 
-    /* --- 内容通用优化 --- */
     .content-header h1 { font-size: 1.5rem; }
     .section-title { font-size: 1.5rem; }
     
-    /* --- 导航链接优化 --- */
     .nav-grid, .nav-links, .charts-grid, .status-summary {
-        grid-template-columns: 1fr; /* 全部强制单列 */
+        grid-template-columns: 1fr;
         gap: 15px;
     }
     .nav-category { padding: 15px; }
     .category-title h2 { font-size: 1.2rem; }
     .nav-link { padding: 10px; font-size: 0.9rem; }
     
-    /* --- 服务监控优化 --- */
     #monitoring-container header { padding: 25px 15px; }
     .summary-card { padding: 20px; }
     .card-value { font-size: 2rem; }
@@ -352,12 +335,10 @@ footer {
     .nas-info-card { padding: 15px; gap: 15px; }
     .nas-info-value { font-size: 1rem; }
     
-    /* --- 天气仪表盘优化 --- */
     .weather-card { padding: 15px; min-width: auto; }
     .weather-card h2 { font-size: 1.5rem; }
     .weather-card p { font-size: 1rem; }
     .weather-chart-container { padding: 10px; }
 
-    /* --- 页脚优化 --- */
     footer { font-size: 0.8rem; margin-top: 40px; }
 }
