@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
     
-    // --- 【新增】全局移动端检测 ---
     const isMobile = window.innerWidth <= 768;
 
     // --- API Endpoints ---
@@ -30,23 +29,6 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('current-date').textContent = `${year}年${month}月${day}日 ${weekday}`;
     }
 
-    function updateWeather() {
-        const temps = [22, 23, 24, 25, 26, 27, 28, 29, 30];
-        const weathers = ['晴', '多云', '小雨', '阴'];
-        const cities = ['北京', '上海', '广州', '深圳', '杭州', '南京'];
-        const temp = temps[Math.floor(Math.random() * temps.length)];
-        const weather = weathers[Math.floor(Math.random() * weathers.length)];
-        const city = cities[Math.floor(Math.random() * cities.length)];
-        document.querySelector('.temp').textContent = `${temp}°C`;
-        document.querySelector('.city').textContent = `${city} · ${weather}`;
-        
-        const icon = document.querySelector('.weather i');
-        if (weather === '晴') { icon.className = 'fas fa-sun'; icon.style.color = '#ff9800'; } 
-        else if (weather === '多云') { icon.className = 'fas fa-cloud'; icon.style.color = '#78909c'; }
-        else if (weather === '小雨') { icon.className = 'fas fa-cloud-rain'; icon.style.color = '#2196f3'; }
-        else { icon.className = 'fas fa-cloud'; icon.style.color = '#607d8b'; }
-    }
-    
     function countSites() {
         const sites = document.querySelectorAll('.nav-link');
         document.getElementById('site-count').textContent = sites.length;
@@ -91,13 +73,11 @@ document.addEventListener('DOMContentLoaded', function() {
     async function fetchNotifications() {
         const listEl = document.getElementById('notifications-list');
         listEl.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><div>正在刷新...</div></div>`;
-
         try {
             const response = await fetch(NOTIFICATIONS_API);
             if (!response.ok) throw new Error(`HTTP错误! 状态码: ${response.status}`);
             const data = await response.json();
             if (data.success === false) throw new Error(`API返回错误: ${data.error || '未知错误'}`);
-
             if (data.notifications && data.notifications.length > 0) {
                 listEl.innerHTML = '';
                 data.notifications.forEach(item => {
@@ -155,7 +135,6 @@ document.addEventListener('DOMContentLoaded', function() {
             renderOverviewCharts(monitors, { up: upCount, down: downCount, warning: warningCount });
         } else if (!data.nas_stats && !data.nas_history) { showMonitoringError("没有找到任何监控服务数据。"); }
     }
-    
     function renderNasProgressBars(stats) {
         document.getElementById('nas-boot-time').textContent = stats.system_time?.boot_time || 'N/A';
         document.getElementById('nas-uptime').textContent = stats.system_time?.uptime || 'N/A';
@@ -169,7 +148,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         container.innerHTML = html;
     }
-
     function renderNasHistoryCharts(history) {
         if (nasCpuHistoryChart) nasCpuHistoryChart.destroy();
         if (nasNetworkHistoryChart) nasNetworkHistoryChart.destroy();
@@ -183,7 +161,6 @@ document.addEventListener('DOMContentLoaded', function() {
             nasNetworkHistoryChart = new Chart(netCtx, { type: 'line', data: { datasets: datasets }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, title: { display: !isMobile, text: 'GB' }, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } }, tooltip: { enabled: !isMobile } } } });
         }
     }
-
     window.toggleDetailChart = function(monitorId) {
         const card = document.getElementById(`monitor-card-${monitorId}`);
         if (!card) return;
@@ -193,7 +170,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (monitor && monitor.response_times) createDetailChart(monitor);
         }
     }
-    
     function createDetailChart(monitor) {
         const canvasId = `detail-chart-${monitor.id}`, ctx = document.getElementById(canvasId)?.getContext('2d');
         if (!ctx) return;
@@ -201,7 +177,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const chartData = monitor.response_times.map(rt => ({ x: rt.datetime * 1000, y: rt.value })).reverse();
         new Chart(ctx, { type: 'line', data: { datasets: [{ label: '响应时间 (ms)', data: chartData, borderColor: 'rgba(30, 136, 229, 0.5)', backgroundColor: 'rgba(30, 136, 229, 0.1)', borderWidth: 1, tension: 0.3, fill: true, pointRadius: 0 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'hour' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile } } } });
     }
-
     function renderOverviewCharts(monitors, counts) {
         const statusCtx = document.getElementById('statusChart')?.getContext('2d');
         if (statusCtx) {
@@ -214,7 +189,6 @@ document.addEventListener('DOMContentLoaded', function() {
             new Chart(rtCtx, { type: 'bar', data: { labels: monitors.map(m => m.friendly_name.substring(0, isMobile ? 5 : 12) + (m.friendly_name.length > (isMobile ? 5 : 12) ? '...' : '')), datasets: [{ label: '响应时间 (ms)', data: monitors.map(m => m.response_times?.[0]?.value || 0), backgroundColor: 'rgba(30, 136, 229, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile } } } });
         }
     }
-
     async function fetchMonitoringData() {
         try {
             const response = await fetch(MONITORING_PROXY_API, { method: 'POST', cache: 'no-cache' });
@@ -224,18 +198,17 @@ document.addEventListener('DOMContentLoaded', function() {
             return data;
         } catch (error) { console.error('获取监控数据失败:', error); showMonitoringError(error.message); return null; }
     }
-
     function showMonitoringError(message) {
         const container = document.getElementById('monitoring-container');
         container.innerHTML = `<div class="error-state"><h2>加载数据失败</h2><p>${message}</p></div>`;
     }
-
     async function initMonitoring() {
         const container = document.getElementById('monitoring-container');
         if (!container.innerHTML.trim()) { container.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><p>正在加载全部监控数据...</p></div>`; }
         const data = await fetchMonitoringData();
         if (data) renderMonitoringPage(data);
     }
+
 
     // --- 5. 天气仪表盘功能 ---
     const sourceStyles = { 'HefengAPI': { label: 'API', tempColor: 'rgb(255, 99, 132)', humidColor: 'rgb(255, 159, 64)' }, 'ESP8266':   { label: '设备', tempColor: 'rgb(54, 162, 235)', humidColor: 'rgb(75, 192, 192)' }, 'default':   { label: '其他', tempColor: 'rgb(201, 203, 207)', humidColor: 'rgb(153, 102, 255)' } };
@@ -299,7 +272,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 datasets.push({ label: `温度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.temperature })), borderColor: style.tempColor, backgroundColor: style.tempColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y', tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
                 datasets.push({ label: `湿度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.humidity })), borderColor: style.humidColor, backgroundColor: style.humidColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y1', borderDash: [5, 5], tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
             }
-            new Chart(canvas, { type: 'line', data: { datasets: datasets }, options: { responsive: true, interaction: { mode: 'index', intersect: false, }, plugins: { title: { display: true, text: `${cityName} - 24小时趋势`, font: { size: isMobile ? 14 : 18 } }, legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } } }, scales: { x: { type: 'time', time: { unit: 'hour', tooltipFormat: 'HH:mm', displayFormats: { hour: 'HH:mm' } }, title: { display: false }, ticks: { font: { size: 10 } } }, y: { type: 'linear', display: true, position: 'left', title: { display: !isMobile, text: '温度 (°C)' }, ticks: { font: { size: 10 } } }, y1: { type: 'linear', display: true, position: 'right', title: { display: !isMobile, text: '湿度 (%)' }, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } } } } });
+            new Chart(canvas, {
+                type: 'line',
+                data: { datasets: datasets },
+                options: {
+                    responsive: true,
+                    interaction: {
+                        mode: 'x',
+                        intersect: false,
+                    },
+                    plugins: { 
+                        title: { display: true, text: `${cityName} - 24小时趋势`, font: { size: isMobile ? 14 : 18 } },
+                        legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } } 
+                    },
+                    scales: {
+                        x: { type: 'time', time: { unit: 'hour', tooltipFormat: 'HH:mm', displayFormats: { hour: 'HH:mm' } }, title: { display: false }, ticks: { font: { size: 10 } } },
+                        y: { type: 'linear', display: true, position: 'left', title: { display: !isMobile, text: '温度 (°C)' }, ticks: { font: { size: 10 } } },
+                        y1: { type: 'linear', display: true, position: 'right', title: { display: !isMobile, text: '湿度 (%)' }, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } }
+                    }
+                }
+            });
         }
     }
 
@@ -307,8 +299,6 @@ document.addEventListener('DOMContentLoaded', function() {
     function initialize() {
         updateTime();
         setInterval(updateTime, 1000);
-        updateWeather();
-        setInterval(updateWeather, 600000);
         countSites();
         handleTabs();
         initMonitoring();
