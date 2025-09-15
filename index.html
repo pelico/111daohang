@@ -18,7 +18,6 @@
                     <div class="time" id="current-time">00:00:00</div>
                     <div class="date" id="current-date">2023年1月1日 星期一</div>
                 </div>
-                <!-- 【已删除】模拟天气模块 -->
             </div>
             <div class="search-container">
                 <form class="search-box" action="https://www.baidu.com/s" method="get" target="_blank">
@@ -42,7 +41,7 @@
             <button class="tab-button" data-tab="tab-weather"><i class="fas fa-cloud-sun"></i> 天气仪表盘</button>
         </div>
 
-        <!-- 选项卡内容区域 (其余部分保持不变) -->
+        <!-- 选项卡内容区域 -->
         <div class="tab-content active" id="tab-links">
              <div class="nav-grid">
                 <div class="nav-category">
@@ -83,9 +82,13 @@
                 </div>
             </div>
         </div>
+        
         <div class="tab-content" id="tab-monitoring">
-            <div id="monitoring-container"></div>
+            <div id="monitoring-container">
+                <!-- 服务监控内容将由 JS 动态生成 -->
+            </div>
         </div>
+
         <div class="tab-content" id="tab-notifications">
             <div id="notifications-container">
                 <header class="content-header">
@@ -103,6 +106,7 @@
                 <div id="notifications-status-message"></div>
             </div>
         </div>
+
         <div class="tab-content" id="tab-weather">
             <div id="weather-dashboard-container">
                 <div id="weather-loading-message">
