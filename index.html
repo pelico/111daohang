@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valar Morghulis - 个人导航中心</title>
+    <title>Valar Morghulis</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -32,6 +32,48 @@
             <h1>Valar Morghulis</h1>
         </div>
 
+        <!-- ======================================================= -->
+        <!--           【新增】NAS 实时状态监控模块                  -->
+        <!-- ======================================================= -->
+        <div class="nas-header-container">
+            <div class="nas-header-grid">
+                <div class="nas-metric-card">
+                    <span class="nas-metric-label">CPU</span>
+                    <div class="nas-metric-value" id="nas-cpu-usage">--%</div>
+                </div>
+                <div class="nas-metric-card">
+                    <span class="nas-metric-label">内存</span>
+                    <div class="nas-metric-value" id="nas-mem-usage">--%</div>
+                    <div class="nas-metric-subvalue" id="nas-mem-details">--/--MB</div>
+                </div>
+                <div class="nas-metric-card">
+                    <span class="nas-metric-label"><i class="fas fa-arrow-down"></i> 下载</span>
+                    <div class="nas-metric-value" id="nas-net-down">--MB/s</div>
+                </div>
+                <div class="nas-metric-card">
+                    <span class="nas-metric-label"><i class="fas fa-arrow-up"></i> 上传</span>
+                    <div class="nas-metric-value" id="nas-net-up">--MB/s</div>
+                </div>
+                <div class="nas-metric-card wide-card">
+                    <span class="nas-metric-label">系统存储</span>
+                    <div class="nas-progress-bar-container">
+                        <div class="nas-progress-bar" id="nas-disk-progress"></div>
+                    </div>
+                    <div class="nas-metric-subvalue" id="nas-disk-details">--% (--/--GB)</div>
+                </div>
+                <div class="nas-metric-card wide-card">
+                    <span class="nas-metric-label">系统运行时间</span>
+                    <div class="nas-metric-value small-font" id="nas-system-uptime">--</div>
+                    <div class="nas-metric-subvalue" id="nas-boot-time">--</div>
+                </div>
+            </div>
+            <div id="nas-status-footer">
+                <span id="nas-status-text">正在连接...</span>
+                <span id="nas-error-text" class="nas-error"></span>
+            </div>
+        </div>
+        <!-- ======================================================= -->
+
         <!-- 选项卡切换 -->
         <div class="tabs">
             <button class="tab-button active" data-tab="tab-links"><i class="fas fa-star"></i> 常用网站</button>
@@ -40,7 +82,7 @@
             <button class="tab-button" data-tab="tab-weather"><i class="fas fa-cloud-sun"></i> 天气仪表盘</button>
         </div>
 
-        <!-- 选项卡内容区域 -->
+        <!-- 选项卡内容区域 (其余部分保持不变) -->
         <div class="tab-content active" id="tab-links">
              <div class="nav-grid">
                 <div class="nav-category">
@@ -81,13 +123,9 @@
                 </div>
             </div>
         </div>
-        
         <div class="tab-content" id="tab-monitoring">
-            <div id="monitoring-container">
-                <!-- 服务监控内容将由 JS 动态生成 -->
-            </div>
+            <div id="monitoring-container"></div>
         </div>
-
         <div class="tab-content" id="tab-notifications">
             <div id="notifications-container">
                 <header class="content-header">
@@ -105,7 +143,6 @@
                 <div id="notifications-status-message"></div>
             </div>
         </div>
-
         <div class="tab-content" id="tab-weather">
             <div id="weather-dashboard-container">
                 <div id="weather-loading-message">
@@ -127,20 +164,5 @@
     <script src="script.js"></script>
     <script type="text/javascript" src="https://myhkw.cn/player/js/jquery.min.js"></script>
     <script src="https://myhkw.cn/api/player/demo" id="myhk" key="demo" m="1" au="1"></script>
-    <script 
-  data-host-id="1" 
-  data-auto-reg="true" 
-  data-login-token="" 
-  data-title="" 
-  data-logo="" 
-  data-theme-color="#1fe1f9" 
-  data-close-width="48" 
-  data-close-height="48" 
-  data-open-width="380" 
-  data-open-height="680" 
-  data-welcome="talk to me" 
-  src="https://lt.111312.xyz/widget.js" 
-  async 
-></script>
 </body>
 </html>
