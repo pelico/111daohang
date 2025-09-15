@@ -341,14 +341,6 @@ footer {
     .weather-chart-container { padding: 10px; }
 
     footer { font-size: 0.8rem; margin-top: 40px; }
-
-
-
-
-
-
-
-
     
         /* 【新增】NAS 顶部模块的移动端样式 */
     .nas-header-grid {
@@ -360,7 +352,7 @@ footer {
     .nas-metric-value {
         font-size: 1.2em;
     }
-}
+    
 .nas-header-container {
     background: rgba(30, 30, 30, 0.85);
     color: #e0e0e0;
@@ -438,4 +430,4 @@ footer {
     color: #666;
 }
 .nas-error { color: #cf6679; }
-
+}
