@@ -322,10 +322,9 @@ document.addEventListener('DOMContentLoaded', function() {
     initialize();
 });
 
-
 /*
  * ===============================================
- * ===   【最终版】NAS 实时状态监控 (顶部模块)     ===
+ * ===   【最终修正版】NAS 实时状态监控 (顶部模块)  ===
  * ===============================================
  */
 (() => {
@@ -334,7 +333,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // --- 辅助函数 ---
     function formatBytes(bytes, decimals = 1) {
-        if (!bytes || bytes <= 0) return '0 Bytes';
+        if (bytes === undefined || bytes === null || bytes <= 0) return '0 Bytes';
         const k = 1024;
         const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -342,7 +341,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function formatSpeed(bytesPerSecond, decimals = 2) {
-         if (!bytesPerSecond || bytesPerSecond < 1) return '0 B/s';
+         if (bytesPerSecond === undefined || bytesPerSecond === null || bytesPerSecond < 1) return '0 B/s';
         const k = 1024;
         const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'];
         const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
@@ -373,24 +372,35 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const response = await fetch(WORKER_URL);
             if (!response.ok) {
-                const errorData = await response.json();
+                const errorData = await response.json().catch(() => ({ error: `请求失败: ${response.status}` }));
                 throw new Error(errorData.error || `请求失败: ${response.status}`);
             }
             const data = await response.json();
-            
-            // 更新 UI 元素
-            document.getElementById('nas-cpu-usage').textContent = `${data.cpu_usage || 0}%`;
-            document.getElementById('nas-mem-usage').textContent = `${data.mem_usage || 0}%`;
-            document.getElementById('nas-mem-details').textContent = `${data.mem_details.used || 0}/${data.mem_details.total || 0}MB`;
-            document.getElementById('nas-net-down').textContent = formatSpeed(data.net_down_speed || 0);
-            document.getElementById('nas-net-up').textContent = formatSpeed(data.net_up_speed || 0);
 
-            // 更新硬盘信息
+            // 如果 worker 返回了错误信息，也显示出来
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            // --- 【已修正】从 data 对象中安全地读取每个值 ---
+            document.getElementById('nas-cpu-usage').textContent = `${data.cpu_usage || '0.0'}%`;
+            document.getElementById('nas-mem-usage').textContent = `${data.mem_usage || '0.0'}%`;
+            
+            // 安全地访问内存详情
+            const memDetails = data.mem_details || {};
+            document.getElementById('nas-mem-details').textContent = `${memDetails.used || 0}/${memDetails.total || 0}MB`;
+            
+            document.getElementById('nas-net-down').textContent = formatSpeed(data.net_down_speed);
+            document.getElementById('nas-net-up').textContent = formatSpeed(data.net_up_speed);
+
+            // 安全地访问硬盘详情
+            const diskDetailsData = data.disk_details || {};
             const progressBar = document.getElementById('nas-disk-progress');
-            const diskDetails = document.getElementById('nas-disk-details');
-            if (progressBar && diskDetails) {
+            const diskDetailsEl = document.getElementById('nas-disk-details');
+
+            if (progressBar && diskDetailsEl) {
                  progressBar.style.width = `${data.disk_usage_percent || 0}%`;
-                 diskDetails.textContent = `${data.disk_usage_percent || 0}% (${formatBytes(data.disk_details.used)} / ${formatBytes(data.disk_details.total)})`;
+                 diskDetailsEl.textContent = `${data.disk_usage_percent || '0.0'}% (${formatBytes(diskDetailsData.used)} / ${formatBytes(diskDetailsData.total)})`;
             }
 
             // 更新时间和运行状态
@@ -401,7 +411,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('nas-boot-time').textContent = `开机于: ${bootDate.toLocaleString('zh-CN', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })}`;
             }
 
-            if (statusText) statusText.textContent = `上次更新: ${new Date(data.last_updated).toLocaleTimeString()}`;
+            if (statusText && data.last_updated) {
+                statusText.textContent = `上次更新: ${new Date(data.last_updated).toLocaleTimeString()}`;
+            }
             if (errorText) errorText.textContent = '';
 
         } catch (error) {
