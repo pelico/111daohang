@@ -323,16 +323,16 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 /*
- * ===============================================
- * ===   【最终修正版】NAS 实时状态监控 (顶部模块)  ===
- * ===============================================
+ * =======================================================
+ * ===   【最终修正版 V3】NAS 实时状态监控 (顶部模块)     ===
+ * =======================================================
  */
 (() => {
     // --- 配置区 ---
     const WORKER_URL = 'https://nas-hook.111312.xyz';
     
-    // --- 辅助函数 ---
-    function formatBytes(bytes, decimals = 1) {
+    // --- 【已修正】辅助函数已重命名，避免冲突 ---
+    function nas_formatBytes(bytes, decimals = 1) {
         if (bytes === undefined || bytes === null || bytes <= 0) return '0 Bytes';
         const k = 1024;
         const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
@@ -340,7 +340,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
     }
 
-    function formatSpeed(bytesPerSecond, decimals = 2) {
+    function nas_formatSpeed(bytesPerSecond, decimals = 2) {
          if (bytesPerSecond === undefined || bytesPerSecond === null || bytesPerSecond < 1) return '0 B/s';
         const k = 1024;
         const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'];
@@ -348,7 +348,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return parseFloat((bytesPerSecond / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
     }
     
-    function formatUptime(totalSeconds) {
+    function nas_formatUptime(totalSeconds) {
         if (!totalSeconds || totalSeconds <= 0) return '计算中...';
         totalSeconds = Math.floor(totalSeconds);
         const days = Math.floor(totalSeconds / 86400);
@@ -365,7 +365,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // --- 核心数据更新函数 ---
-    async function updateDisplay() {
+    async function updateNasDisplay() {
         const statusText = document.getElementById('nas-status-text');
         const errorText = document.getElementById('nas-error-text');
         
@@ -377,38 +377,47 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             const data = await response.json();
 
-            // 如果 worker 返回了错误信息，也显示出来
             if (data.error) {
                 throw new Error(data.error);
             }
             
-            // --- 【已修正】从 data 对象中安全地读取每个值 ---
-            document.getElementById('nas-cpu-usage').textContent = `${data.cpu_usage || '0.0'}%`;
-            document.getElementById('nas-mem-usage').textContent = `${data.mem_usage || '0.0'}%`;
+            // --- 【已修正】加固所有 DOM 元素获取和数据解析 ---
+            const cpuEl = document.getElementById('nas-cpu-usage');
+            if (cpuEl) cpuEl.textContent = `${data.cpu_usage || '0.0'}%`;
             
-            // 安全地访问内存详情
-            const memDetails = data.mem_details || {};
-            document.getElementById('nas-mem-details').textContent = `${memDetails.used || 0}/${memDetails.total || 0}MB`;
+            const memEl = document.getElementById('nas-mem-usage');
+            if (memEl) memEl.textContent = `${data.mem_usage || '0.0'}%`;
             
-            document.getElementById('nas-net-down').textContent = formatSpeed(data.net_down_speed);
-            document.getElementById('nas-net-up').textContent = formatSpeed(data.net_up_speed);
+            const memDetailsEl = document.getElementById('nas-mem-details');
+            if (memDetailsEl) {
+                const memDetails = data.mem_details || {};
+                memDetailsEl.textContent = `${memDetails.used || 0}/${memDetails.total || 0}MB`;
+            }
+            
+            const netDownEl = document.getElementById('nas-net-down');
+            if (netDownEl) netDownEl.textContent = nas_formatSpeed(data.net_down_speed);
 
-            // 安全地访问硬盘详情
-            const diskDetailsData = data.disk_details || {};
+            const netUpEl = document.getElementById('nas-net-up');
+            if (netUpEl) netUpEl.textContent = nas_formatSpeed(data.net_up_speed);
+
             const progressBar = document.getElementById('nas-disk-progress');
             const diskDetailsEl = document.getElementById('nas-disk-details');
-
             if (progressBar && diskDetailsEl) {
-                 progressBar.style.width = `${data.disk_usage_percent || 0}%`;
-                 diskDetailsEl.textContent = `${data.disk_usage_percent || '0.0'}% (${formatBytes(diskDetailsData.used)} / ${formatBytes(diskDetailsData.total)})`;
+                const diskDetailsData = data.disk_details || {};
+                progressBar.style.width = `${data.disk_usage_percent || 0}%`;
+                diskDetailsEl.textContent = `${data.disk_usage_percent || '0.0'}% (${nas_formatBytes(diskDetailsData.used)} / ${nas_formatBytes(diskDetailsData.total)})`;
             }
 
-            // 更新时间和运行状态
             if (data.boot_time) {
                 const uptimeSeconds = (Date.now() / 1000) - data.boot_time;
-                document.getElementById('nas-system-uptime').textContent = formatUptime(uptimeSeconds);
-                const bootDate = new Date(data.boot_time * 1000);
-                document.getElementById('nas-boot-time').textContent = `开机于: ${bootDate.toLocaleString('zh-CN', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })}`;
+                const uptimeEl = document.getElementById('nas-system-uptime');
+                if(uptimeEl) uptimeEl.textContent = nas_formatUptime(uptimeSeconds);
+
+                const bootTimeEl = document.getElementById('nas-boot-time');
+                if (bootTimeEl) {
+                    const bootDate = new Date(data.boot_time * 1000);
+                    bootTimeEl.textContent = `开机于: ${bootDate.toLocaleString('zh-CN', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })}`;
+                }
             }
 
             if (statusText && data.last_updated) {
@@ -424,6 +433,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // --- 启动监控 ---
     // 首次立即执行，然后每 5 秒刷新一次以获取最新缓存结果
-    updateDisplay();
-    setInterval(updateDisplay, 5000);
+    updateNasDisplay();
+    setInterval(updateNasDisplay, 5000);
 })();
