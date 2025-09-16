@@ -325,20 +325,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
 /*
  * ===============================================
- * ===   【新增】NAS 实时状态监控 (顶部模块)     ===
+ * ===   【最终版】NAS 实时状态监控 (顶部模块)     ===
  * ===============================================
  */
 (() => {
-    // --- 用户配置区 ---
+    // --- 配置区 ---
     const WORKER_URL = 'https://nas-hook.111312.xyz';
-    const TARGET_INTERFACES = ['eth0', 'wlan0'];
-    const TARGET_MOUNTPOINT = '/etc/hostname'; // 指定要显示的硬盘挂载点
     
-    // --- 脚本逻辑 ---
-    let previousCpuData = null, previousNetData = null, lastFetchTime = null, bootTimestamp = 0;
-
-    function formatBytes(bytes, decimals = 2) {
-        if (bytes <= 0) return '0 Bytes';
+    // --- 辅助函数 ---
+    function formatBytes(bytes, decimals = 1) {
+        if (!bytes || bytes <= 0) return '0 Bytes';
         const k = 1024;
         const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -346,7 +342,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function formatSpeed(bytesPerSecond, decimals = 2) {
-         if (bytesPerSecond < 1) return '0 B/s';
+         if (!bytesPerSecond || bytesPerSecond < 1) return '0 B/s';
         const k = 1024;
         const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'];
         const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
@@ -354,7 +350,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function formatUptime(totalSeconds) {
-        if (totalSeconds <= 0) return '计算中...';
+        if (!totalSeconds || totalSeconds <= 0) return '计算中...';
         totalSeconds = Math.floor(totalSeconds);
         const days = Math.floor(totalSeconds / 86400);
         totalSeconds %= 86400;
@@ -368,132 +364,54 @@ document.addEventListener('DOMContentLoaded', function() {
         if (parts.length === 0 && totalSeconds > 0) return `${totalSeconds} 秒`;
         return parts.join(' ');
     }
-
-    function parseMetrics(text) {
-        const metrics = {
-            cpu: { total: 0, idle: 0 },
-            memory: { total: 0, available: 0 },
-            network: { received: 0, transmitted: 0 },
-            bootTime: 0,
-            filesystems: {}
-        };
-
-        const lines = text.split('\n');
-        for (const line of lines) {
-            if (line.startsWith('#')) continue;
-            
-            const parts = line.split(' ');
-            const value = parseFloat(parts[1]);
-
-            if (line.startsWith('node_cpu_seconds_total')) {
-                metrics.cpu.total += value;
-                if (line.includes('mode="idle"')) metrics.cpu.idle += value;
-            }
-            else if (line.startsWith('node_memory_MemTotal_bytes')) metrics.memory.total = value;
-            else if (line.startsWith('node_memory_MemAvailable_bytes')) metrics.memory.available = value;
-            else if (line.startsWith('node_network_receive_bytes_total') || line.startsWith('node_network_transmit_bytes_total')) {
-                const isReceive = line.startsWith('node_network_receive_bytes_total');
-                const interfaceMatch = line.match(/device="([^"]+)"/);
-                if (interfaceMatch && TARGET_INTERFACES.includes(interfaceMatch[1])) {
-                    if (isReceive) metrics.network.received += value;
-                    else metrics.network.transmitted += value;
-                }
-            }
-            else if (line.startsWith('node_boot_time_seconds')) metrics.bootTime = value;
-            else if (line.startsWith('node_filesystem_size_bytes') || line.startsWith('node_filesystem_avail_bytes')) {
-                const mountpointMatch = line.match(/mountpoint="([^"]+)"/);
-                if (mountpointMatch) {
-                    const mountpoint = mountpointMatch[1];
-                    if (!metrics.filesystems[mountpoint]) metrics.filesystems[mountpoint] = {};
-                    if (line.startsWith('node_filesystem_size_bytes')) metrics.filesystems[mountpoint].size = value;
-                    if (line.startsWith('node_filesystem_avail_bytes')) metrics.filesystems[mountpoint].avail = value;
-                }
-            }
-        }
-        return metrics;
-    }
     
-    function updateDiskDisplay(filesystems) {
-        const progressBar = document.getElementById('nas-disk-progress');
-        const diskDetails = document.getElementById('nas-disk-details');
-        if (!progressBar || !diskDetails) return;
-
-        const data = filesystems[TARGET_MOUNTPOINT];
-        if (data && data.size > 0 && data.avail !== undefined) {
-            const total = data.size;
-            const available = data.avail;
-            const used = total - available;
-            const usagePercent = (used / total) * 100;
-            
-            progressBar.style.width = `${usagePercent.toFixed(1)}%`;
-            diskDetails.textContent = `${usagePercent.toFixed(1)}% (${formatBytes(used, 1)} / ${formatBytes(total, 1)})`;
-        }
-    }
-
-    async function fetchData() {
+    // --- 核心数据更新函数 ---
+    async function updateDisplay() {
         const statusText = document.getElementById('nas-status-text');
         const errorText = document.getElementById('nas-error-text');
         
         try {
             const response = await fetch(WORKER_URL);
-            if (!response.ok) throw new Error(`请求失败: ${response.status} ${response.statusText}`);
-            const text = await response.text();
-            const now = Date.now();
-            const currentMetrics = parseMetrics(text);
-            
-            if (previousCpuData) {
-                const totalDiff = currentMetrics.cpu.total - previousCpuData.total;
-                const idleDiff = currentMetrics.cpu.idle - previousCpuData.idle;
-                const usage = totalDiff > 0 ? 100 * (1 - (idleDiff / totalDiff)) : 0;
-                document.getElementById('nas-cpu-usage').textContent = `${usage.toFixed(1)}%`;
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `请求失败: ${response.status}`);
             }
+            const data = await response.json();
             
-            const memTotalMB = (currentMetrics.memory.total / 1024 / 1024);
-            const memAvailableMB = (currentMetrics.memory.available / 1024 / 1024);
-            const memUsedMB = memTotalMB - memAvailableMB;
-            const memUsagePercent = memTotalMB > 0 ? (memUsedMB / memTotalMB) * 100 : 0;
-            document.getElementById('nas-mem-usage').textContent = `${memUsagePercent.toFixed(1)}%`;
-            document.getElementById('nas-mem-details').textContent = `${memUsedMB.toFixed(0)}/${memTotalMB.toFixed(0)}MB`;
-            
-            if (previousNetData && lastFetchTime) {
-                const timeDelta = (now - lastFetchTime) / 1000;
-                const downBytesDiff = currentMetrics.network.received - previousNetData.received;
-                const upBytesDiff = currentMetrics.network.transmitted - previousNetData.transmitted;
-                document.getElementById('nas-net-down').textContent = formatSpeed(downBytesDiff / timeDelta);
-                document.getElementById('nas-net-up').textContent = formatSpeed(upBytesDiff / timeDelta);
+            // 更新 UI 元素
+            document.getElementById('nas-cpu-usage').textContent = `${data.cpu_usage || 0}%`;
+            document.getElementById('nas-mem-usage').textContent = `${data.mem_usage || 0}%`;
+            document.getElementById('nas-mem-details').textContent = `${data.mem_details.used || 0}/${data.mem_details.total || 0}MB`;
+            document.getElementById('nas-net-down').textContent = formatSpeed(data.net_down_speed || 0);
+            document.getElementById('nas-net-up').textContent = formatSpeed(data.net_up_speed || 0);
+
+            // 更新硬盘信息
+            const progressBar = document.getElementById('nas-disk-progress');
+            const diskDetails = document.getElementById('nas-disk-details');
+            if (progressBar && diskDetails) {
+                 progressBar.style.width = `${data.disk_usage_percent || 0}%`;
+                 diskDetails.textContent = `${data.disk_usage_percent || 0}% (${formatBytes(data.disk_details.used)} / ${formatBytes(data.disk_details.total)})`;
             }
-            
-            if (currentMetrics.bootTime > 0) {
-                bootTimestamp = currentMetrics.bootTime;
-                const bootDate = new Date(bootTimestamp * 1000);
+
+            // 更新时间和运行状态
+            if (data.boot_time) {
+                const uptimeSeconds = (Date.now() / 1000) - data.boot_time;
+                document.getElementById('nas-system-uptime').textContent = formatUptime(uptimeSeconds);
+                const bootDate = new Date(data.boot_time * 1000);
                 document.getElementById('nas-boot-time').textContent = `开机于: ${bootDate.toLocaleString('zh-CN', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })}`;
             }
-            
-            updateDiskDisplay(currentMetrics.filesystems);
 
-            previousCpuData = currentMetrics.cpu;
-            previousNetData = currentMetrics.network;
-            lastFetchTime = now;
-            
-            if (statusText) statusText.textContent = `上次更新: ${new Date().toLocaleTimeString()}`;
+            if (statusText) statusText.textContent = `上次更新: ${new Date(data.last_updated).toLocaleTimeString()}`;
             if (errorText) errorText.textContent = '';
 
         } catch (error) {
-            console.error('获取NAS状态失败:', error);
+            console.error('更新NAS状态失败:', error);
             if (errorText) errorText.textContent = `错误: ${error.message}`;
         }
     }
     
-    function updateUptimeDisplay() {
-        if (bootTimestamp > 0) {
-            const uptimeSeconds = (Date.now() / 1000) - bootTimestamp;
-            const uptimeEl = document.getElementById('nas-system-uptime');
-            if (uptimeEl) uptimeEl.textContent = formatUptime(uptimeSeconds);
-        }
-    }
-
-    // --- 启动 NAS 监控 ---
-    fetchData();
-    setInterval(fetchData, 5000);
-    setInterval(updateUptimeDisplay, 1000);
+    // --- 启动监控 ---
+    // 首次立即执行，然后每 5 秒刷新一次以获取最新缓存结果
+    updateDisplay();
+    setInterval(updateDisplay, 5000);
 })();
