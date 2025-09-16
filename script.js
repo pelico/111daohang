@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', function() {
-    
+    console.log('[DIAGNOSTIC] DOMContentLoaded event fired. Main script starting.');
+
     const isMobile = window.innerWidth <= 768;
 
     // --- API Endpoints ---
@@ -39,11 +40,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- 2. 选项卡切换逻辑 ---
     function handleTabs() {
+        console.log('[DIAGNOSTIC] handleTabs() called.');
         const tabButtons = document.querySelectorAll('.tab-button');
         const tabContents = document.querySelectorAll('.tab-content');
+        console.log(`[DIAGNOSTIC] Found ${tabButtons.length} tab buttons.`);
 
         tabButtons.forEach(button => {
             button.addEventListener('click', () => {
+                console.log(`[DIAGNOSTIC] Tab button clicked: ${button.getAttribute('data-tab')}`);
                 tabButtons.forEach(btn => btn.classList.remove('active'));
                 tabContents.forEach(content => content.classList.remove('active'));
 
@@ -194,7 +198,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const rtCtx = document.getElementById('responseTimeChart')?.getContext('2d');
         if (rtCtx) {
             if (Chart.getChart(rtCtx)) Chart.getChart(rtCtx).destroy();
-            // 【已修正】这里的 ?.?.value 是错误的，修正为 ?.?.value
             new Chart(rtCtx, { type: 'bar', data: { labels: monitors.map(m => m.friendly_name.substring(0, isMobile ? 5 : 12) + (m.friendly_name.length > (isMobile ? 5 : 12) ? '...' : '')), datasets: [{ label: '响应时间 (ms)', data: monitors.map(m => m.response_times?.[0]?.value || 0), backgroundColor: 'rgba(30, 136, 229, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile } } } });
         }
     }
@@ -220,7 +223,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- 5. 天气仪表盘功能 ---
     const sourceStyles = { 'HefengAPI': { label: 'API', tempColor: 'rgb(255, 99, 132)', humidColor: 'rgb(255, 159, 64)' }, 'ESP8266':   { label: '设备', tempColor: 'rgb(54, 162, 235)', humidColor: 'rgb(75, 192, 192)' }, 'default':   { label: '其他', tempColor: 'rgb(201, 203, 207)', humidColor: 'rgb(153, 102, 255)' } };
-
     async function fetchWeatherData() {
         const loadingMessage = document.getElementById('weather-loading-message');
         const cardsContainer = document.getElementById('latest-weather-cards');
@@ -239,7 +241,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (loadingMessage) loadingMessage.innerHTML = `<div class="error-state"><h2>加载天气数据失败</h2><p>${error.message}</p></div>`;
         }
     }
-
     function displayLatestWeather(latestData) {
         const container = document.getElementById('latest-weather-cards');
         if (!container) return;
@@ -252,7 +253,6 @@ document.addEventListener('DOMContentLoaded', function() {
             container.appendChild(card);
         }
     }
-
     function displayTrendCharts(historyData) {
         const container = document.getElementById('weather-charts-container');
         if (!container) return;
@@ -280,7 +280,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 const style = sourceStyles[sourceName] || sourceStyles.default;
                 const sourceData = sources[sourceName];
                 datasets.push({ label: `温度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.temperature })), borderColor: style.tempColor, backgroundColor: style.tempColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y', tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
-                // 【已修正】这里的 borderDash 缺少值
                 datasets.push({ label: `湿度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.humidity })), borderColor: style.humidColor, backgroundColor: style.humidColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y1', borderDash: [5, 5], tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
             }
             new Chart(canvas, {
@@ -288,14 +287,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 data: { datasets: datasets },
                 options: {
                     responsive: true,
-                    interaction: {
-                        mode: 'x',
-                        intersect: false,
-                    },
-                    plugins: { 
-                        title: { display: true, text: `${cityName} - 24小时趋势`, font: { size: isMobile ? 14 : 18 } },
-                        legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } } 
-                    },
+                    interaction: { mode: 'x', intersect: false, },
+                    plugins: { title: { display: true, text: `${cityName} - 24小时趋势`, font: { size: isMobile ? 14 : 18 } }, legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } } },
                     scales: {
                         x: { type: 'time', time: { unit: 'hour', tooltipFormat: 'HH:mm', displayFormats: { hour: 'HH:mm' } }, title: { display: false }, ticks: { font: { size: 10 } } },
                         y: { type: 'linear', display: true, position: 'left', title: { display: !isMobile, text: '温度 (°C)' }, ticks: { font: { size: 10 } } },
@@ -308,6 +301,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- 初始化函数 ---
     function initialize() {
+        console.log('[DIAGNOSTIC] Initializing application...');
         updateTime();
         setInterval(updateTime, 1000);
         countSites();
@@ -317,21 +311,24 @@ document.addEventListener('DOMContentLoaded', function() {
         if (refreshBtn) {
             refreshBtn.addEventListener('click', fetchNotifications);
         }
+        console.log('[DIAGNOSTIC] Application initialized.');
     }
 
     initialize();
 });
 
+
 /*
  * =======================================================
- * ===   【最终修正版 V3】NAS 实时状态监控 (顶部模块)     ===
+ * ===       【最终修正版】NAS 实时状态监控 (顶部模块)     ===
  * =======================================================
  */
 (() => {
+    console.log('[DIAGNOSTIC-NAS] NAS monitoring script started.');
     // --- 配置区 ---
     const WORKER_URL = 'https://nas-hook.111312.xyz';
     
-    // --- 【已修正】辅助函数已重命名，避免冲突 ---
+    // --- 辅助函数 (已重命名) ---
     function nas_formatBytes(bytes, decimals = 1) {
         if (bytes === undefined || bytes === null || bytes <= 0) return '0 Bytes';
         const k = 1024;
@@ -339,7 +336,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
     }
-
     function nas_formatSpeed(bytesPerSecond, decimals = 2) {
          if (bytesPerSecond === undefined || bytesPerSecond === null || bytesPerSecond < 1) return '0 B/s';
         const k = 1024;
@@ -347,7 +343,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
         return parseFloat((bytesPerSecond / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
     }
-    
     function nas_formatUptime(totalSeconds) {
         if (!totalSeconds || totalSeconds <= 0) return '计算中...';
         totalSeconds = Math.floor(totalSeconds);
@@ -366,39 +361,37 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // --- 核心数据更新函数 ---
     async function updateNasDisplay() {
+        console.log('[DIAGNOSTIC-NAS] updateNasDisplay() called.');
         const statusText = document.getElementById('nas-status-text');
         const errorText = document.getElementById('nas-error-text');
         
         try {
             const response = await fetch(WORKER_URL);
+            console.log(`[DIAGNOSTIC-NAS] Fetch response status: ${response.status}`);
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ error: `请求失败: ${response.status}` }));
                 throw new Error(errorData.error || `请求失败: ${response.status}`);
             }
             const data = await response.json();
+            console.log('[DIAGNOSTIC-NAS] Parsed data from worker:', data);
 
-            if (data.error) {
-                throw new Error(data.error);
-            }
+            if (data.error) throw new Error(data.error);
             
-            // --- 【已修正】加固所有 DOM 元素获取和数据解析 ---
-            const cpuEl = document.getElementById('nas-cpu-usage');
-            if (cpuEl) cpuEl.textContent = `${data.cpu_usage || '0.0'}%`;
+            // 使用 document.getElementById 安全地更新每个元素
+            const updateElementText = (id, text) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = text;
+                else console.warn(`[DIAGNOSTIC-NAS] Element with ID "${id}" not found.`);
+            };
             
-            const memEl = document.getElementById('nas-mem-usage');
-            if (memEl) memEl.textContent = `${data.mem_usage || '0.0'}%`;
+            updateElementText('nas-cpu-usage', `${data.cpu_usage || '0.0'}%`);
+            updateElementText('nas-mem-usage', `${data.mem_usage || '0.0'}%`);
             
-            const memDetailsEl = document.getElementById('nas-mem-details');
-            if (memDetailsEl) {
-                const memDetails = data.mem_details || {};
-                memDetailsEl.textContent = `${memDetails.used || 0}/${memDetails.total || 0}MB`;
-            }
+            const memDetails = data.mem_details || {};
+            updateElementText('nas-mem-details', `${memDetails.used || 0}/${memDetails.total || 0}MB`);
             
-            const netDownEl = document.getElementById('nas-net-down');
-            if (netDownEl) netDownEl.textContent = nas_formatSpeed(data.net_down_speed);
-
-            const netUpEl = document.getElementById('nas-net-up');
-            if (netUpEl) netUpEl.textContent = nas_formatSpeed(data.net_up_speed);
+            updateElementText('nas-net-down', nas_formatSpeed(data.net_down_speed));
+            updateElementText('nas-net-up', nas_formatSpeed(data.net_up_speed));
 
             const progressBar = document.getElementById('nas-disk-progress');
             const diskDetailsEl = document.getElementById('nas-disk-details');
@@ -410,14 +403,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (data.boot_time) {
                 const uptimeSeconds = (Date.now() / 1000) - data.boot_time;
-                const uptimeEl = document.getElementById('nas-system-uptime');
-                if(uptimeEl) uptimeEl.textContent = nas_formatUptime(uptimeSeconds);
-
-                const bootTimeEl = document.getElementById('nas-boot-time');
-                if (bootTimeEl) {
-                    const bootDate = new Date(data.boot_time * 1000);
-                    bootTimeEl.textContent = `开机于: ${bootDate.toLocaleString('zh-CN', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })}`;
-                }
+                updateElementText('nas-system-uptime', nas_formatUptime(uptimeSeconds));
+                const bootDate = new Date(data.boot_time * 1000);
+                updateElementText('nas-boot-time', `开机于: ${bootDate.toLocaleString('zh-CN', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })}`);
             }
 
             if (statusText && data.last_updated) {
@@ -426,13 +414,22 @@ document.addEventListener('DOMContentLoaded', function() {
             if (errorText) errorText.textContent = '';
 
         } catch (error) {
-            console.error('更新NAS状态失败:', error);
+            console.error('[DIAGNOSTIC-NAS] FATAL ERROR in updateNasDisplay:', error);
             if (errorText) errorText.textContent = `错误: ${error.message}`;
         }
     }
     
     // --- 启动监控 ---
-    // 首次立即执行，然后每 5 秒刷新一次以获取最新缓存结果
-    updateNasDisplay();
-    setInterval(updateNasDisplay, 5000);
+    // 确保在主脚本初始化后执行，以防 DOM 未就绪
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+             console.log('[DIAGNOSTIC-NAS] DOM fully loaded. Starting NAS monitor.');
+             updateNasDisplay();
+             setInterval(updateNasDisplay, 5000);
+        });
+    } else {
+        console.log('[DIAGNOSTIC-NAS] DOM already loaded. Starting NAS monitor.');
+        updateNasDisplay();
+        setInterval(updateNasDisplay, 5000);
+    }
 })();
