@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let monitorDataCache = [];
     let notificationsLoaded = false;
     let weatherLoaded = false;
-    let monitoringLoaded = false; // 【新增】服务监控加载状态
+    let monitoringLoaded = false;
     let nasCpuHistoryChart, nasNetworkHistoryChart, nasTempHistoryChart;
 
     // --- 1. 基础功能 ---
@@ -40,7 +40,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // --- 2. 选项卡切换逻辑 ---
-    // 【已修正】增加对服务监控的懒加载
     function handleTabs() {
         const tabButtons = document.querySelectorAll('.tab-button');
         const tabContents = document.querySelectorAll('.tab-content');
@@ -140,7 +139,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!container) return;
         container.innerHTML = '';
 
-        const hasNasHistory = data.nas_history && (data.nas_history.cpu?.length > 0 || data.nas_history.network?.length > 0 || data.nas_history.temp?.length > 0);
+        const hasNasHistory = data.nas_history && (data.nas_history.cpu?.length > 0 || data.nas_history.network?.total?.length > 0 || data.nas_history.temp?.length > 0);
         const hasMonitors = data.monitors && data.monitors.length > 0;
 
         if (!hasNasHistory && !hasMonitors) {
@@ -200,8 +199,22 @@ document.addEventListener('DOMContentLoaded', function() {
             nasCpuHistoryChart = new Chart(cpuCtx, { type: 'line', data: { datasets: [{ label: 'CPU Usage (%)', data: history.cpu.map(d => ({x: d.timestamp * 1000, y: d.usage})), borderColor: 'rgba(30, 136, 229, 0.7)', backgroundColor: 'rgba(30, 136, 229, 0.1)', borderWidth: 1.5, pointRadius: 0, tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, max: 100, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } } } });
         }
         const netCtx = document.getElementById('nasNetworkHistoryChart')?.getContext('2d');
-        if (netCtx && history.network && history.network.length > 0) {
-            nasNetworkHistoryChart = new Chart(netCtx, { type: 'line', data: { datasets: [{ label: '总接收 (GB)', data: history.network.map(d => ({ x: d.timestamp * 1000, y: d.total_recv / 1024**3 })), borderColor: 'rgba(76, 175, 80, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4 }, { label: '总发送 (GB)', data: history.network.map(d => ({ x: d.timestamp * 1000, y: d.total_sent / 1024**3 })), borderColor: 'rgba(255, 152, 0, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, title: { display: !isMobile, text: 'GB' }, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } } } });
+        if (netCtx && history.network) {
+            const datasets = [];
+            
+            if (history.network.total && history.network.total.length > 0) {
+                datasets.push({ label: '总接收 (GB)', data: history.network.total.map(d => ({ x: d.timestamp * 1000, y: d.total_recv / 1024**3 })), borderColor: 'rgba(76, 175, 80, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4 });
+                datasets.push({ label: '总发送 (GB)', data: history.network.total.map(d => ({ x: d.timestamp * 1000, y: d.total_sent / 1024**3 })), borderColor: 'rgba(255, 152, 0, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4 });
+            }
+            
+            if (history.network.docker && history.network.docker.length > 0) {
+                 datasets.push({ label: 'Docker 接收 (GB)', data: history.network.docker.map(d => ({ x: d.timestamp * 1000, y: d.total_recv / 1024**3 })), borderColor: 'rgba(156, 39, 176, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4, borderDash: [5, 5] });
+                 datasets.push({ label: 'Docker 发送 (GB)', data: history.network.docker.map(d => ({ x: d.timestamp * 1000, y: d.total_sent / 1024**3 })), borderColor: 'rgba(8, 14, 153, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4, borderDash: [5, 5] });
+            }
+
+            if (datasets.length > 0) {
+                nasNetworkHistoryChart = new Chart(netCtx, { type: 'line', data: { datasets: datasets }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, title: { display: !isMobile, text: 'GB' }, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } } } });
+            }
         }
         if (history.temp && history.temp.length > 0) {
             const tempContainer = document.getElementById('nas-temp-history-chart-container');
