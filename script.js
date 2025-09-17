@@ -107,7 +107,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (container) container.innerHTML = `<div class="error-state"><h2>加载数据失败</h2><p>${message}</p></div>`;
     }
     
-    // 【已修正】清理并简化 initMonitoring 函数
     async function initMonitoring() {
         const container = document.getElementById('monitoring-container');
         if (container && !container.innerHTML.trim()) { 
@@ -115,14 +114,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         try {
-            // 只发起一次请求到我们的“数据中心”Worker
             const response = await fetch(MONITORING_PROXY_API, { method: 'POST', cache: 'no-cache' });
             if (!response.ok) throw new Error(`API 请求失败: ${response.status}`);
             
             const data = await response.json();
             if (data.stat === 'fail') throw new Error(`API 返回错误: ${(data.error || {}).message || '未知'}`);
             
-            // 直接将获取到的完整 data 对象传递给渲染函数
             renderCombinedMonitoringPage(data);
 
         } catch (error) {
