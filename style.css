@@ -12,190 +12,51 @@
     --danger-color: #f44336;
     --warning-color: #ff9800;
 }
-
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-}
-
-body {
-    background: var(--background);
-    min-height: 100vh;
-    padding: 20px;
-    color: var(--text-color);
-    background-attachment: fixed;
-    line-height: 1.6;
-}
-
-.container {
-    max-width: 1200px;
-    margin: 0 auto;
-}
-
-/* --- 顶部栏 --- */
-.top-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 15px 25px;
-    background: rgba(255, 255, 255, 0.92);
-    border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    margin-bottom: 40px;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-}
-
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; }
+body { background: var(--background); min-height: 100vh; padding: 20px; color: var(--text-color); background-attachment: fixed; line-height: 1.6; }
+.container { max-width: 1200px; margin: 0 auto; }
+.top-bar { display: flex; justify-content: space-between; align-items: center; padding: 15px 25px; background: rgba(255, 255, 255, 0.92); border-radius: 16px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); margin-bottom: 40px; backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); }
 .time-info { display: flex; align-items: center; gap: 25px; }
-.time { font-size: 1.5rem; font-weight: 700; color: var(--primary-color); text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.time { font-size: 1.5rem; font-weight: 700; color: var(--primary-color); }
 .date { font-size: 1rem; color: var(--text-light); margin-top: 5px; font-weight: 500; }
-
 .search-container { flex-grow: 1; max-width: 650px; margin: 0 30px; }
 .search-box { display: flex; height: 55px; border-radius: 30px; overflow: hidden; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15); transition: all 0.3s ease; }
 .search-box:hover { box-shadow: 0 6px 20px rgba(26, 115, 232, 0.4); }
 .search-box input { flex-grow: 1; border: none; padding: 0 25px; font-size: 1.1rem; outline: none; background: #fff; }
 .search-box button { width: 70px; background: var(--primary-color); border: none; color: white; cursor: pointer; transition: background 0.3s; font-size: 1.2rem; }
 .search-box button:hover { background: #0d62da; }
-
-/* --- 主标题 --- */
-.main-title {
-    text-align: center;
-    margin: 30px 0 40px;
-    color: white;
-    text-shadow: 0 2px 8px rgba(0,0,0,0.3);
-}
+.main-title { text-align: center; margin: 30px 0 40px; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.3); }
 .main-title h1 { font-size: 3rem; margin-bottom: 15px; font-weight: 700; }
 .main-title p { font-size: 1.2rem; opacity: 0.9; }
-
-/* --- 选项卡 Tabs --- */
-.tabs {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 30px;
-    border-bottom: 2px solid rgba(255,255,255,0.3);
-    padding-bottom: 15px;
-    flex-wrap: wrap;
-}
-.tab-button {
-    padding: 12px 25px;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.7);
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    border-radius: 8px 8px 0 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-.tab-button:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-}
-.tab-button.active {
-    background: var(--card-bg);
-    color: var(--primary-color);
-}
+.tabs { display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 2px solid rgba(255,255,255,0.3); padding-bottom: 15px; flex-wrap: wrap; }
+.tab-button { padding: 12px 25px; font-size: 1.1rem; font-weight: 600; color: rgba(255, 255, 255, 0.7); background: transparent; border: none; cursor: pointer; transition: all 0.3s ease; border-radius: 8px 8px 0 0; display: flex; align-items: center; gap: 10px; }
+.tab-button:hover { background: rgba(255, 255, 255, 0.1); color: white; }
+.tab-button.active { background: var(--card-bg); color: var(--primary-color); }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
-
-
-/* --- 内容通用样式 --- */
-.card {
-    background-color: var(--card-bg);
-    border-radius: 16px;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
-    overflow: hidden;
-}
-.btn {
-    padding: 10px 18px;
-    background-color: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 1em;
-    transition: background-color 0.2s;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-}
+.card { background-color: var(--card-bg); border-radius: 16px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15); overflow: hidden; }
+.btn { padding: 10px 18px; background-color: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1em; transition: background-color 0.2s; display: inline-flex; align-items: center; gap: 8px; }
 .btn:hover { background-color: #2980b9; }
-.btn:active { transform: translateY(1px); }
-.btn svg { width: 16px; height: 16px; fill: currentColor; }
-.content-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
-    border-bottom: 1px solid var(--border-color);
-}
-.content-header h1 {
-    color: var(--text-color);
-    margin: 0;
-    font-weight: 600;
-    font-size: 1.8rem;
-}
-
-/* --- Tab 1: 导航链接 --- */
-.nav-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 30px;
-}
-.nav-category {
-    background: var(--card-bg);
-    border-radius: 16px;
-    padding: 25px;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
-    transition: transform 0.3s, box-shadow 0.3s;
-}
-.nav-category:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
-}
-.category-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
-    border-bottom: 2px solid #e0e0e0;
-    color: var(--primary-color);
-}
-.category-title i {
-    font-size: 1.6rem;
-    background: linear-gradient(45deg, var(--primary-color), var(--primary-dark));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-}
+.content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border-color); }
+.content-header h1 { color: var(--text-color); margin: 0; font-weight: 600; font-size: 1.8rem; }
+.nav-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 30px; }
+.nav-category { background: var(--card-bg); border-radius: 16px; padding: 25px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15); }
+.category-title { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e0e0e0; color: var(--primary-color); }
+.category-title i { font-size: 1.6rem; background: linear-gradient(45deg, var(--primary-color), var(--primary-dark)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .category-title h2 { font-size: 1.5rem; font-weight: 700; }
 .nav-links { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .nav-link { display: flex; align-items: center; padding: 12px 15px; background: #f8f9fa; border-radius: 10px; color: #202124; text-decoration: none; transition: all 0.3s ease; font-size: 1rem; font-weight: 500; border: 1px solid #e0e0e0; }
 .nav-link:hover { background: var(--primary-light); transform: translateX(5px); box-shadow: 0 5px 15px rgba(26, 115, 232, 0.2); border-color: var(--primary-color); }
 .nav-link i { margin-right: 12px; font-size: 1.3rem; width: 24px; text-align: center; }
-
-/* --- Tab 2: 服务监控 --- */
-#monitoring-container header { text-align: center; padding: 40px 20px; background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%); border-radius: 20px; box-shadow: 0 10px 30px rgba(26, 35, 126, 0.2); color: white; position: relative; overflow: hidden; }
-.status-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; margin: 30px 0; }
+.status-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; margin-top: 30px; }
 .summary-card { background: var(--card-bg); border-radius: 16px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08); padding: 30px; text-align: center; border-top: 4px solid var(--success-color); }
-.summary-card.uptime { border-top-color: #00bcd4; } .summary-card.incidents { border-top-color: var(--danger-color); }
+.summary-card.uptime { border-top-color: #00bcd4; }
 .card-icon { width: 70px; height: 70px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 30px; }
-.status .card-icon { background: rgba(76, 175, 80, 0.15); color: var(--success-color); }
 .uptime .card-icon { background: rgba(0, 188, 212, 0.15); color: #00bcd4; }
-.incidents .card-icon { background: rgba(244, 67, 54, 0.15); color: var(--danger-color); }
 .card-title { font-size: 18px; color: #666; margin-bottom: 10px; font-weight: 500; }
 .card-value { font-size: 40px; font-weight: 700; margin-bottom: 5px; }
-.status .card-value { color: var(--success-color); } .uptime .card-value { color: #00bcd4; } .incidents .card-value { color: var(--danger-color); }
-.card-desc { color: #777; font-size: 15px; margin-top: 10px; }
-.services-grid { background: var(--card-bg); border-radius: 16px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08); overflow: hidden; margin-bottom: 40px; }
-.services-header { background: var(--primary-dark); color: white; padding: 20px 30px; font-size: 20px; font-weight: 600; }
+.uptime .card-value { color: #00bcd4; }
+.services-grid { background: var(--card-bg); border-radius: 16px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08); overflow: hidden; }
 .service-card { padding: 25px 30px; border-bottom: 1px solid #eee; }
 .service-card:last-child { border-bottom: none; }
 .service-card-header { cursor: pointer; }
@@ -216,16 +77,11 @@ body {
 .chart-title { font-size: 18px; font-weight: 600; }
 .chart-wrapper { height: 300px; position: relative; }
 .section-title { font-size: 24px; font-weight: 600; margin-bottom: 25px; display: flex; align-items: center; gap: 12px; color: var(--primary-dark); }
-
-/* --- Tab 2: 服务监控 - NAS 部分 --- */
 .nas-section { margin-bottom: 40px; }
 .nas-chart-wrapper { height: 250px; position: relative; }
 .detail-chart-container { margin-top: 25px; height: 250px; }
-
-/* --- Tab 3: 我的通知 --- */
 #notifications-list { min-height: 200px; padding: 10px; }
-.notification-item { padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: flex-start; transition: background-color 0.2s; }
-.notification-item:hover { background-color: rgba(0, 0, 0, 0.02); }
+.notification-item { padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: flex-start; }
 .notification-item:last-child { border-bottom: none; }
 .notification-content { flex-grow: 1; margin-right: 15px; word-break: break-word; }
 .notification-timestamp { font-size: 0.85em; color: var(--text-light); white-space: nowrap; margin-top: 2px; }
@@ -233,134 +89,34 @@ body {
 .status-msg { font-size: 0.9em; padding: 8px 12px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; }
 .status-msg.success { color: var(--success-color); background-color: rgba(46, 204, 113, 0.1); }
 .status-msg.error { color: var(--danger-color); background-color: rgba(231, 76, 60, 0.1); }
-
-/* --- Tab 4: 天气仪表盘 --- */
-#weather-dashboard-container h1 { text-align: center; color: var(--primary-dark); margin-bottom: 30px; }
 #latest-weather-cards { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin-bottom: 40px; }
-.weather-card { background: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 20px; flex-grow: 1; min-width: 280px; text-align: center; transition: transform 0.2s ease-in-out; }
-.weather-card:hover { transform: translateY(-5px); }
+.weather-card { background: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 20px; flex-grow: 1; min-width: 280px; text-align: center; }
 .weather-card h2 { margin-top: 0; color: var(--primary-color); font-size: 1.8em; }
 .weather-card p { margin: 8px 0; font-size: 1.1em; }
 .weather-card .weather-text { font-size: 1.4em; font-weight: bold; color: #2c3e50; }
 .weather-card .timestamp { font-size: 0.8em; color: var(--text-light); }
 #weather-charts-container { display: flex; flex-direction: column; gap: 40px; align-items: center; }
 .weather-chart-container { width: 100%; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-
-
-/* --- 通用状态 (加载/空/错误) --- */
 .loading-state, .empty-state, .error-state { text-align: center; padding: 40px 20px; color: var(--text-light); }
 .loading-spinner { width: 40px; height: 40px; border: 4px solid rgba(0, 0, 0, 0.1); border-left-color: var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .error-state { color: var(--danger-color); }
+footer { text-align: center; margin-top: 60px; padding: 25px; color: rgba(255, 255, 255, 0.85); font-size: 1rem; border-top: 1px solid rgba(255,255,255,0.2); }
 
-/* --- 页脚 --- */
-footer {
-    text-align: center;
-    margin-top: 60px;
-    padding: 25px;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 1rem;
-    border-top: 1px solid rgba(255,255,255,0.2);
-}
-
-/*
- * ===============================================
- * ===        NAS 实时状态监控 (顶部模块)        ===
- * ===============================================
- */
-.nas-header-container {
-    background: rgba(255, 255, 255, 0.9);
-    color: #333;
-    padding: 20px;
-    border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-    margin-bottom: 30px;
-}
-
-.nas-header-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 20px;
-}
-
-.nas-metric-card {
-    background: rgba(240, 242, 245, 0.8);
-    padding: 15px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
-
-.nas-metric-card.wide-card {
-    grid-column: span 2;
-}
-
-.nas-metric-icon {
-    font-size: 1.8em;
-    color: var(--primary-color);
-}
-
-.nas-metric-details {
-    text-align: left;
-    flex-grow: 1;
-}
-.nas-metric-details.wide {
-    width: 100%;
-}
-
-.nas-metric-label {
-    font-size: 0.9em;
-    color: var(--text-light);
-    margin-bottom: 5px;
-}
-
-.nas-metric-value {
-    font-size: 1.5em;
-    font-weight: 600;
-    color: var(--text-color);
-}
-
-.nas-metric-value.small-font {
-    font-size: 1.1em;
-}
-
-.nas-metric-subvalue {
-    font-size: 0.85em;
-    color: #666;
-    margin-top: 5px;
-}
-
-.nas-progress-bar-container {
-    width: 100%;
-    background-color: #e9ecef;
-    border-radius: 5px;
-    margin-top: 8px;
-    height: 8px;
-}
-
-.nas-progress-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #1e88e5, #42a5f5);
-    border-radius: 5px;
-    width: 0%;
-    transition: width 0.5s ease-in-out;
-}
-
-#nas-status-footer {
-    text-align: right;
-    margin-top: 15px;
-    font-size: 0.8em;
-    color: #999;
-}
+/* --- 【已修改】NAS 实时状态监控 (顶部模块) --- */
+.nas-header-container { background: rgba(255, 255, 255, 0.9); color: var(--text-color); padding: 20px; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); margin-bottom: 30px; }
+.nas-header-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 20px; }
+.nas-metric-card { background: rgba(240, 242, 245, 0.8); padding: 15px; border-radius: 10px; display: flex; align-items: center; gap: 15px; }
+.nas-metric-icon { font-size: 1.8em; color: var(--primary-color); }
+.nas-metric-details { text-align: left; flex-grow: 1; }
+.nas-metric-label { font-size: 0.9em; color: var(--text-light); margin-bottom: 5px; }
+.nas-metric-value { font-size: 1.5em; font-weight: 600; color: var(--text-color); }
+.nas-metric-value.small-font { font-size: 1.1em; }
+.nas-metric-subvalue { font-size: 0.85em; color: #666; margin-top: 5px; }
+#nas-status-footer { text-align: right; margin-top: 15px; font-size: 0.8em; color: #999; }
 .nas-error { color: var(--danger-color); }
 
-
-/*
- * ===============================================
- * ===           移动端响应式设计             ===
- * ===============================================
- */
+/* --- 移动端响应式设计 --- */
 @media (max-width: 768px) {
     body { padding: 10px; }
     .top-bar { flex-direction: column; gap: 15px; padding: 15px; }
@@ -370,37 +126,28 @@ footer {
     .search-container { width: 100%; margin: 0; }
     .search-box { height: 45px; }
     .search-box input { font-size: 1rem; }
-
     .main-title h1 { font-size: 2rem; }
     .main-title p { font-size: 1rem; }
     .tabs { gap: 5px; margin-bottom: 20px; padding-bottom: 10px; }
     .tab-button { padding: 10px 15px; font-size: 0.9rem; gap: 8px; }
-
     .content-header h1 { font-size: 1.5rem; }
     .section-title { font-size: 1.5rem; }
-    
     .nav-grid, .nav-links, .charts-grid, .status-summary { grid-template-columns: 1fr; gap: 15px; }
     .nav-category { padding: 15px; }
     .category-title h2 { font-size: 1.2rem; }
     .nav-link { padding: 10px; font-size: 0.9rem; }
-    
-    #monitoring-container header { padding: 25px 15px; }
     .summary-card { padding: 20px; }
     .card-value { font-size: 2rem; }
     .service-card { padding: 15px; }
     .service-name { font-size: 1rem; }
     .service-status { font-size: 0.9rem; padding: 5px 12px; }
-    
     .weather-card { padding: 15px; min-width: auto; }
     .weather-card h2 { font-size: 1.5rem; }
     .weather-card p { font-size: 1rem; }
     .weather-chart-container { padding: 10px; }
-
+    /* 【已修改】NAS 顶部模块的移动端样式 */
     .nas-header-grid { grid-template-columns: 1fr 1fr; }
-    .nas-metric-card.wide-card { grid-column: span 2; }
-    .nas-metric-value { font-size: 1.2em; }
     .nas-metric-card { flex-direction: column; align-items: center; text-align: center; }
     .nas-metric-icon { margin-bottom: 10px; }
-
     footer { font-size: 0.8rem; margin-top: 40px; }
 }
