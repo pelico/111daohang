@@ -107,6 +107,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (container) container.innerHTML = `<div class="error-state"><h2>加载数据失败</h2><p>${message}</p></div>`;
     }
     
+    // 【已修正】清理并简化 initMonitoring 函数
     async function initMonitoring() {
         const container = document.getElementById('monitoring-container');
         if (container && !container.innerHTML.trim()) { 
@@ -116,9 +117,13 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const response = await fetch(MONITORING_PROXY_API, { method: 'POST', cache: 'no-cache' });
             if (!response.ok) throw new Error(`API 请求失败: ${response.status}`);
+            
             const data = await response.json();
-            if (data.stat !== 'ok' && data.stat !== 'partial_ok') throw new Error(`API 返回错误: ${(data.error || {}).message || '未知'}`);
+            if (data.stat === 'fail') throw new Error(`API 返回错误: ${(data.error || {}).message || '未知'}`);
+            
+            // 直接将获取到的完整 data 对象传递给渲染函数
             renderCombinedMonitoringPage(data);
+
         } catch (error) {
             console.error('获取监控数据失败:', error);
             showMonitoringError(error.message);
@@ -130,7 +135,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!container) return;
         container.innerHTML = '';
 
-        if (data.nas_history && (data.nas_history.cpu.length > 0 || data.nas_history.network.length > 0 || data.nas_history.temp.length > 0)) {
+        // A. 渲染 NAS 历史图表
+        if (data.nas_history && (data.nas_history.cpu?.length > 0 || data.nas_history.network?.length > 0 || data.nas_history.temp?.length > 0)) {
             const nasSection = document.createElement('div');
             nasSection.className = 'nas-section';
             nasSection.innerHTML = `
@@ -144,6 +150,7 @@ document.addEventListener('DOMContentLoaded', function() {
             renderNasHistoryCharts(data.nas_history);
         }
 
+        // B. 渲染 UptimeRobot 模块
         if (data.monitors && data.monitors.length > 0) {
             const monitors = data.monitors;
             monitorDataCache = monitors;
@@ -169,6 +176,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>`;
             container.appendChild(uptimeContainer);
             renderOverviewCharts(monitors);
+        } else {
+            // 如果只有 NAS 数据，这里可以加个提示
+            if(!data.nas_history || data.nas_history.cpu.length === 0){
+                showMonitoringError("未能加载任何监控数据。");
+            }
         }
     }
     
@@ -202,7 +214,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const monitor = monitorDataCache.find(m => m.id === monitorId);
             if (monitor && monitor.response_times) createDetailChart(monitor);
         }
-    }
+    };
     function createDetailChart(monitor) {
         const canvasId = `detail-chart-${monitor.id}`, ctx = document.getElementById(canvasId)?.getContext('2d');
         if (!ctx) return;
