@@ -208,8 +208,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             if (history.network.docker && history.network.docker.length > 0) {
-                 datasets.push({ label: 'Docker 接收 (GB)', data: history.network.docker.map(d => ({ x: d.timestamp * 1000, y: d.total_recv / 1024**3 })), borderColor: 'rgba(156, 39, 176, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4, borderDash: [5, 5] });
-                 datasets.push({ label: 'Docker 发送 (GB)', data: history.network.docker.map(d => ({ x: d.timestamp * 1000, y: d.total_sent / 1024**3 })), borderColor: 'rgba(8, 14, 153, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4, borderDash: [5, 5] });
+                 datasets.push({ label: 'Docker 发送 (GB)', data: history.network.docker.map(d => ({ x: d.timestamp * 1000, y: d.total_recv / 1024**3 })), borderColor: 'rgba(156, 39, 176, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4, borderDash: [5, 5] });
+                 datasets.push({ label: 'Docker 接收 (GB)', data: history.network.docker.map(d => ({ x: d.timestamp * 1000, y: d.total_sent / 1024**3 })), borderColor: 'rgba(8, 14, 153, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4, borderDash: [5, 5] });
             }
 
             if (datasets.length > 0) {
