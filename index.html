@@ -31,9 +31,7 @@
             <p>想到啥赶紧干</p>
         </div>
 
-        <!-- ======================================================= -->
-        <!--           【新版】NAS 实时状态监控模块                  -->
-        <!-- ======================================================= -->
+        <!-- NAS 实时状态监控模块 -->
         <div class="nas-header-container">
             <div class="nas-header-grid">
                 <!-- CPU -->
@@ -69,22 +67,20 @@
                         <div class="nas-metric-value small-font" id="nas-net-speed">-- / --</div>
                     </div>
                 </div>
-                <!-- 硬盘 -->
-                <div class="nas-metric-card wide-card">
+                <!-- 【已修改】硬盘 -->
+                <div class="nas-metric-card">
                     <div class="nas-metric-icon"><i class="fas fa-hdd"></i></div>
-                    <div class="nas-metric-details wide">
+                    <div class="nas-metric-details">
                         <span class="nas-metric-label">系统存储</span>
-                        <div class="nas-progress-bar-container">
-                            <div class="nas-progress-bar" id="nas-disk-progress"></div>
-                        </div>
-                        <div class="nas-metric-subvalue" id="nas-disk-details">--% (--/--GB)</div>
+                        <div class="nas-metric-value" id="nas-disk-usage">--%</div>
+                        <div class="nas-metric-subvalue" id="nas-disk-details">--/--GB</div>
                     </div>
                 </div>
                  <!-- 运行时间 -->
-                <div class="nas-metric-card wide-card">
+                <div class="nas-metric-card">
                     <div class="nas-metric-icon"><i class="fas fa-history"></i></div>
-                    <div class="nas-metric-details wide">
-                        <span class="nas-metric-label">系统运行时间</span>
+                    <div class="nas-metric-details">
+                        <span class="nas-metric-label">系统运行</span>
                         <div class="nas-metric-value small-font" id="nas-system-uptime">--</div>
                         <div class="nas-metric-subvalue" id="nas-boot-time">--</div>
                     </div>
@@ -95,7 +91,6 @@
                 <span id="nas-error-text" class="nas-error"></span>
             </div>
         </div>
-        <!-- ======================================================= -->
 
         <!-- 选项卡切换 -->
         <div class="tabs">
@@ -109,10 +104,7 @@
         <div class="tab-content active" id="tab-links">
              <div class="nav-grid">
                 <div class="nav-category">
-                    <div class="category-title">
-                        <i class="fas fa-star"></i>
-                        <h2>常用网站</h2>
-                    </div>
+                    <div class="category-title"><i class="fas fa-star"></i><h2>常用网站</h2></div>
                     <div class="nav-links">
                         <a href="https://web.sgwbox.com/home" target="_blank" class="nav-link"><i class="fab fa-chrome"></i> SgwWeb</a>
                         <a href="https://ql.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-question-circle"></i> Qinglong</a>
@@ -131,10 +123,7 @@
                     </div>
                 </div>
                 <div class="nav-category">
-                    <div class="category-title">
-                        <i class="fas fa-heart"></i>
-                        <h2>社交娱乐</h2>
-                    </div>
+                    <div class="category-title"><i class="fas fa-heart"></i><h2>社交娱乐</h2></div>
                     <div class="nav-links">
                         <a href="https://wx.qq.com" target="_blank" class="nav-link"><i class="fab fa-weixin"></i> 微信</a>
                         <a href="https://im.qq.com" target="_blank" class="nav-link"><i class="fab fa-qq"></i> QQ</a>
@@ -146,9 +135,7 @@
                 </div>
             </div>
         </div>
-        <div class="tab-content" id="tab-monitoring">
-            <!-- 服务监控页内容将由 JS 动态生成 -->
-        </div>
+        <div class="tab-content" id="tab-monitoring"></div>
         <div class="tab-content" id="tab-notifications">
             <div id="notifications-container">
                 <header class="content-header">
@@ -169,10 +156,7 @@
         <div class="tab-content" id="tab-weather">
             <div id="weather-dashboard-container">
                 <div id="weather-loading-message">
-                    <div class="loading-state">
-                        <div class="loading-spinner"></div>
-                        <p>正在加载天气数据...</p>
-                    </div>
+                    <div class="loading-state"><div class="loading-spinner"></div><p>正在加载天气数据...</p></div>
                 </div>
                 <div id="latest-weather-cards" style="display: none;"></div>
                 <div id="weather-charts-container" style="display: none;"></div>
