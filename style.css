@@ -103,18 +103,67 @@ body { background: var(--background); min-height: 100vh; padding: 20px; color: v
 .error-state { color: var(--danger-color); }
 footer { text-align: center; margin-top: 60px; padding: 25px; color: rgba(255, 255, 255, 0.85); font-size: 1rem; border-top: 1px solid rgba(255,255,255,0.2); }
 
-/* --- 【已修改】NAS 实时状态监控 (顶部模块) --- */
-.nas-header-container { background: rgba(255, 255, 255, 0.9); color: var(--text-color); padding: 20px; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); margin-bottom: 30px; }
-.nas-header-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 20px; }
-.nas-metric-card { background: rgba(240, 242, 245, 0.8); padding: 15px; border-radius: 10px; display: flex; align-items: center; gap: 15px; }
-.nas-metric-icon { font-size: 1.8em; color: var(--primary-color); }
-.nas-metric-details { text-align: left; flex-grow: 1; }
-.nas-metric-label { font-size: 0.9em; color: var(--text-light); margin-bottom: 5px; }
-.nas-metric-value { font-size: 1.5em; font-weight: 600; color: var(--text-color); }
-.nas-metric-value.small-font { font-size: 1.1em; }
-.nas-metric-subvalue { font-size: 0.85em; color: #666; margin-top: 5px; }
-#nas-status-footer { text-align: right; margin-top: 15px; font-size: 0.8em; color: #999; }
+/*
+ * ===============================================
+ * ===        NAS 实时状态监控 (顶部模块)        ===
+ * ===============================================
+ */
+/* 【已修正】改为浅色主题 */
+.nas-header-container {
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--text-color);
+    padding: 20px;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    margin-bottom: 30px;
+}
+.nas-header-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 20px;
+}
+.nas-metric-card {
+    background: rgba(240, 242, 245, 0.8);
+    padding: 15px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+.nas-metric-icon {
+    font-size: 1.8em;
+    color: var(--primary-color);
+}
+.nas-metric-details {
+    text-align: left;
+    flex-grow: 1;
+}
+.nas-metric-label {
+    font-size: 0.9em;
+    color: var(--text-light);
+    margin-bottom: 5px;
+}
+.nas-metric-value {
+    font-size: 1.5em;
+    font-weight: 600;
+    color: var(--text-color);
+}
+.nas-metric-value.small-font {
+    font-size: 1.1em;
+}
+.nas-metric-subvalue {
+    font-size: 0.85em;
+    color: #666;
+    margin-top: 5px;
+}
+#nas-status-footer {
+    text-align: right;
+    margin-top: 15px;
+    font-size: 0.8em;
+    color: #999;
+}
 .nas-error { color: var(--danger-color); }
+
 
 /* --- 移动端响应式设计 --- */
 @media (max-width: 768px) {
@@ -146,8 +195,19 @@ footer { text-align: center; margin-top: 60px; padding: 25px; color: rgba(255, 2
     .weather-card p { font-size: 1rem; }
     .weather-chart-container { padding: 10px; }
     /* 【已修改】NAS 顶部模块的移动端样式 */
-    .nas-header-grid { grid-template-columns: 1fr 1fr; }
-    .nas-metric-card { flex-direction: column; align-items: center; text-align: center; }
-    .nas-metric-icon { margin-bottom: 10px; }
-    footer { font-size: 0.8rem; margin-top: 40px; }
+   .nas-header-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .nas-metric-card {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 10px;
+    }
+    .nas-metric-icon {
+        margin-bottom: 8px;
+    }
+    .nas-metric-value {
+        font-size: 1.2em;
+    }
 }
