@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let monitorDataCache = [];
     let notificationsLoaded = false;
     let weatherLoaded = false;
+    let monitoringLoaded = false; // 【新增】服务监控加载状态
     let nasCpuHistoryChart, nasNetworkHistoryChart, nasTempHistoryChart;
 
     // --- 1. 基础功能 ---
@@ -39,6 +40,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // --- 2. 选项卡切换逻辑 ---
+    // 【已修正】增加对服务监控的懒加载
     function handleTabs() {
         const tabButtons = document.querySelectorAll('.tab-button');
         const tabContents = document.querySelectorAll('.tab-content');
@@ -50,6 +52,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 const tabId = button.getAttribute('data-tab');
                 const activeTab = document.getElementById(tabId);
                 if (activeTab) activeTab.classList.add('active');
+
+                if (tabId === 'tab-monitoring' && !monitoringLoaded) {
+                    initMonitoring();
+                    monitoringLoaded = true;
+                }
                 if (tabId === 'tab-notifications' && !notificationsLoaded) {
                     fetchNotifications();
                     notificationsLoaded = true;
@@ -103,13 +110,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const STATUS_MAP = { 0: { text: '暂停中', class: 'status-warning', icon: 'fa-pause-circle' }, 1: { text: '未检查', class: 'status-warning', icon: 'fa-question-circle' }, 2: { text: '运行中', class: 'status-up', icon: 'fa-check-circle' }, 8: { text: '疑似故障', class: 'status-warning', icon: 'fa-exclamation-circle' }, 9: { text: '服务中断', class: 'status-down', icon: 'fa-times-circle' } };
     
     function showMonitoringError(message) {
-        const container = document.getElementById('tab-monitoring'); // 【已修正】直接指向父容器
+        const container = document.getElementById('tab-monitoring');
         if (container) container.innerHTML = `<div class="error-state"><h2>加载数据失败</h2><p>${message}</p></div>`;
     }
     
     async function initMonitoring() {
-        const container = document.getElementById('tab-monitoring'); // 【已修正】直接指向父容器
-        if (container && !container.innerHTML.trim()) { 
+        const container = document.getElementById('tab-monitoring');
+        if (container) { 
             container.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><p>正在加载服务监控数据...</p></div>`; 
         }
         
@@ -129,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function renderCombinedMonitoringPage(data) {
-        const container = document.getElementById('tab-monitoring'); // 【已修正】直接指向父容器
+        const container = document.getElementById('tab-monitoring');
         if (!container) return;
         container.innerHTML = '';
 
