@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valar Morghulis</title>
+    <title>Valar Morghulis - 个人导航中心</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -13,11 +13,9 @@
     <div class="container">
         <!-- 顶部信息栏 -->
         <div class="top-bar">
-             <div class="time-weather">
-                <div class="time-info">
-                    <div class="time" id="current-time">00:00:00</div>
-                    <div class="date" id="current-date">2025年1月1日 星期一</div>
-                </div>
+             <div class="time-info">
+                <div class="time" id="current-time">00:00:00</div>
+                <div class="date" id="current-date">2023年1月1日 星期一</div>
             </div>
             <div class="search-container">
                 <form class="search-box" action="https://www.baidu.com/s" method="get" target="_blank">
@@ -29,42 +27,67 @@
         
         <!-- 主标题 -->
         <div class="main-title">
-            <h1>Valar Morghulis</h1>
+            <h1>Valar Morghulis 凡人皆有一死</h1>
+            <p>想到啥赶紧干</p>
         </div>
 
         <!-- ======================================================= -->
-        <!--           【新增】NAS 实时状态监控模块                  -->
+        <!--           【新版】NAS 实时状态监控模块                  -->
         <!-- ======================================================= -->
         <div class="nas-header-container">
             <div class="nas-header-grid">
+                <!-- CPU -->
                 <div class="nas-metric-card">
-                    <span class="nas-metric-label">CPU</span>
-                    <div class="nas-metric-value" id="nas-cpu-usage">--%</div>
-                </div>
-                <div class="nas-metric-card">
-                    <span class="nas-metric-label">内存</span>
-                    <div class="nas-metric-value" id="nas-mem-usage">--%</div>
-                    <div class="nas-metric-subvalue" id="nas-mem-details">--/--MB</div>
-                </div>
-                <div class="nas-metric-card">
-                    <span class="nas-metric-label"><i class="fas fa-arrow-down"></i> 下载</span>
-                    <div class="nas-metric-value" id="nas-net-down">--MB/s</div>
-                </div>
-                <div class="nas-metric-card">
-                    <span class="nas-metric-label"><i class="fas fa-arrow-up"></i> 上传</span>
-                    <div class="nas-metric-value" id="nas-net-up">--MB/s</div>
-                </div>
-                <div class="nas-metric-card wide-card">
-                    <span class="nas-metric-label">系统存储</span>
-                    <div class="nas-progress-bar-container">
-                        <div class="nas-progress-bar" id="nas-disk-progress"></div>
+                    <div class="nas-metric-icon"><i class="fas fa-microchip"></i></div>
+                    <div class="nas-metric-details">
+                        <span class="nas-metric-label">CPU</span>
+                        <div class="nas-metric-value" id="nas-cpu-usage">--%</div>
                     </div>
-                    <div class="nas-metric-subvalue" id="nas-disk-details">--% (--/--GB)</div>
                 </div>
+                <!-- 内存 -->
+                <div class="nas-metric-card">
+                    <div class="nas-metric-icon"><i class="fas fa-memory"></i></div>
+                    <div class="nas-metric-details">
+                        <span class="nas-metric-label">内存</span>
+                        <div class="nas-metric-value" id="nas-mem-usage">--%</div>
+                        <div class="nas-metric-subvalue" id="nas-mem-details">--/--GB</div>
+                    </div>
+                </div>
+                <!-- 温度 (预留) -->
+                <div class="nas-metric-card" id="nas-temp-card" style="display: none;">
+                    <div class="nas-metric-icon"><i class="fas fa-thermometer-half"></i></div>
+                    <div class="nas-metric-details">
+                        <span class="nas-metric-label">温度</span>
+                        <div class="nas-metric-value" id="nas-temp-value">--°C</div>
+                    </div>
+                </div>
+                <!-- 网速 -->
+                <div class="nas-metric-card">
+                    <div class="nas-metric-icon"><i class="fas fa-exchange-alt"></i></div>
+                    <div class="nas-metric-details">
+                        <span class="nas-metric-label">上传 / 下载</span>
+                        <div class="nas-metric-value small-font" id="nas-net-speed">-- / --</div>
+                    </div>
+                </div>
+                <!-- 硬盘 -->
                 <div class="nas-metric-card wide-card">
-                    <span class="nas-metric-label">系统运行时间</span>
-                    <div class="nas-metric-value small-font" id="nas-system-uptime">--</div>
-                    <div class="nas-metric-subvalue" id="nas-boot-time">--</div>
+                    <div class="nas-metric-icon"><i class="fas fa-hdd"></i></div>
+                    <div class="nas-metric-details wide">
+                        <span class="nas-metric-label">系统存储</span>
+                        <div class="nas-progress-bar-container">
+                            <div class="nas-progress-bar" id="nas-disk-progress"></div>
+                        </div>
+                        <div class="nas-metric-subvalue" id="nas-disk-details">--% (--/--GB)</div>
+                    </div>
+                </div>
+                 <!-- 运行时间 -->
+                <div class="nas-metric-card wide-card">
+                    <div class="nas-metric-icon"><i class="fas fa-history"></i></div>
+                    <div class="nas-metric-details wide">
+                        <span class="nas-metric-label">系统运行时间</span>
+                        <div class="nas-metric-value small-font" id="nas-system-uptime">--</div>
+                        <div class="nas-metric-subvalue" id="nas-boot-time">--</div>
+                    </div>
                 </div>
             </div>
             <div id="nas-status-footer">
@@ -124,7 +147,7 @@
             </div>
         </div>
         <div class="tab-content" id="tab-monitoring">
-            <div id="monitoring-container"></div>
+            <!-- 服务监控页内容将由 JS 动态生成 -->
         </div>
         <div class="tab-content" id="tab-notifications">
             <div id="notifications-container">
