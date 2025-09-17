@@ -34,7 +34,6 @@
         <!-- NAS 实时状态监控模块 -->
         <div class="nas-header-container">
             <div class="nas-header-grid">
-                <!-- CPU -->
                 <div class="nas-metric-card">
                     <div class="nas-metric-icon"><i class="fas fa-microchip"></i></div>
                     <div class="nas-metric-details">
@@ -42,7 +41,6 @@
                         <div class="nas-metric-value" id="nas-cpu-usage">--%</div>
                     </div>
                 </div>
-                <!-- 内存 -->
                 <div class="nas-metric-card">
                     <div class="nas-metric-icon"><i class="fas fa-memory"></i></div>
                     <div class="nas-metric-details">
@@ -51,7 +49,6 @@
                         <div class="nas-metric-subvalue" id="nas-mem-details">--/--GB</div>
                     </div>
                 </div>
-                <!-- 温度 (预留) -->
                 <div class="nas-metric-card" id="nas-temp-card" style="display: none;">
                     <div class="nas-metric-icon"><i class="fas fa-thermometer-half"></i></div>
                     <div class="nas-metric-details">
@@ -59,7 +56,6 @@
                         <div class="nas-metric-value" id="nas-temp-value">--°C</div>
                     </div>
                 </div>
-                <!-- 网速 -->
                 <div class="nas-metric-card">
                     <div class="nas-metric-icon"><i class="fas fa-exchange-alt"></i></div>
                     <div class="nas-metric-details">
@@ -67,7 +63,6 @@
                         <div class="nas-metric-value small-font" id="nas-net-speed">-- / --</div>
                     </div>
                 </div>
-                <!-- 【已修改】硬盘 -->
                 <div class="nas-metric-card">
                     <div class="nas-metric-icon"><i class="fas fa-hdd"></i></div>
                     <div class="nas-metric-details">
@@ -76,7 +71,6 @@
                         <div class="nas-metric-subvalue" id="nas-disk-details">--/--GB</div>
                     </div>
                 </div>
-                 <!-- 运行时间 -->
                 <div class="nas-metric-card">
                     <div class="nas-metric-icon"><i class="fas fa-history"></i></div>
                     <div class="nas-metric-details">
@@ -100,7 +94,7 @@
             <button class="tab-button" data-tab="tab-weather"><i class="fas fa-cloud-sun"></i> 天气仪表盘</button>
         </div>
 
-        <!-- 选项卡内容区域 (其余部分保持不变) -->
+        <!-- 选项卡内容区域 -->
         <div class="tab-content active" id="tab-links">
              <div class="nav-grid">
                 <div class="nav-category">
@@ -135,7 +129,12 @@
                 </div>
             </div>
         </div>
-        <div class="tab-content" id="tab-monitoring"></div>
+        
+        <!-- 【已修正】确保每个 tab-content 都有唯一的 ID -->
+        <div class="tab-content" id="tab-monitoring">
+             <!-- 服务监控内容将由 JS 动态生成 -->
+        </div>
+
         <div class="tab-content" id="tab-notifications">
             <div id="notifications-container">
                 <header class="content-header">
@@ -153,6 +152,7 @@
                 <div id="notifications-status-message"></div>
             </div>
         </div>
+
         <div class="tab-content" id="tab-weather">
             <div id="weather-dashboard-container">
                 <div id="weather-loading-message">
