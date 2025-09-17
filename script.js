@@ -115,6 +115,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         try {
+            // 只发起一次请求到我们的“数据中心”Worker
             const response = await fetch(MONITORING_PROXY_API, { method: 'POST', cache: 'no-cache' });
             if (!response.ok) throw new Error(`API 请求失败: ${response.status}`);
             
@@ -135,8 +136,15 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!container) return;
         container.innerHTML = '';
 
-        // A. 渲染 NAS 历史图表
-        if (data.nas_history && (data.nas_history.cpu?.length > 0 || data.nas_history.network?.length > 0 || data.nas_history.temp?.length > 0)) {
+        const hasNasHistory = data.nas_history && (data.nas_history.cpu?.length > 0 || data.nas_history.network?.length > 0 || data.nas_history.temp?.length > 0);
+        const hasMonitors = data.monitors && data.monitors.length > 0;
+
+        if (!hasNasHistory && !hasMonitors) {
+            showMonitoringError("未能加载任何监控数据。");
+            return;
+        }
+
+        if (hasNasHistory) {
             const nasSection = document.createElement('div');
             nasSection.className = 'nas-section';
             nasSection.innerHTML = `
@@ -150,8 +158,7 @@ document.addEventListener('DOMContentLoaded', function() {
             renderNasHistoryCharts(data.nas_history);
         }
 
-        // B. 渲染 UptimeRobot 模块
-        if (data.monitors && data.monitors.length > 0) {
+        if (hasMonitors) {
             const monitors = data.monitors;
             monitorDataCache = monitors;
             let totalUptime = 0;
@@ -176,11 +183,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>`;
             container.appendChild(uptimeContainer);
             renderOverviewCharts(monitors);
-        } else {
-            // 如果只有 NAS 数据，这里可以加个提示
-            if(!data.nas_history || data.nas_history.cpu.length === 0){
-                showMonitoringError("未能加载任何监控数据。");
-            }
         }
     }
     
@@ -316,7 +318,6 @@ document.addEventListener('DOMContentLoaded', function() {
             return `${d}天 ${h}小时 ${m}分钟`;
         }
 
-        // 这个函数只解析实时数据
         function parseNasRealtimeMetrics(text) {
             const metrics = { cpu: { total: 0, idle: 0 }, memory: { total: 0, available: 0 }, network: { received: 0, transmitted: 0 }, bootTime: 0, temp: null, filesystems: {} };
             const targetInterfaces = ['eth0', 'wlan0'];
