@@ -316,7 +316,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const NAS_WORKER_URL = 'https://nas-hook.111312.xyz/';
         const DEFAULT_NAS_URLS = [
             'https://nas-api.111312.xyz/metrics',
-            'https://wkynode.111312.xyz/metrics'
+            'https://wkyapi.111312.xyz/metrics'
         ];
 
         let nasInstances = {};
