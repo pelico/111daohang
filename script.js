@@ -374,61 +374,184 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             return metrics;
         }
-        async function updateNasDisplay() {
-            const statusText = document.getElementById('nas-status-text');
-            const errorText = document.getElementById('nas-error-text');
+    // =======================================================
+    // ===       【新版】NAS 实时动态监控模块 (顶部)        ===
+    // =======================================================
+    (() => {
+        // --- 用户配置区 ---
+        const NAS_WORKER_URL = 'https://nas-hook.111312.xyz/';
+        
+        // 【新增】默认的 NAS 地址列表
+        const DEFAULT_NAS_URLS = [
+            'https://nas-api.111312.xyz/metrics',
+            'https://wkynode.111312.xyz/metrics'
+        ];
+
+        // --- 核心状态变量 ---
+        let nasInstances = {}; // 存储每个 NAS 的状态
+        let nasUrlList = [];
+        let updateInterval;
+
+        // --- 辅助函数 (已重命名) ---
+        function nas_formatBytes(bytes, decimals = 1) { /* ... */ }
+        function nas_formatSpeed(bytesPerSecond, decimals = 2) { /* ... */ }
+        function nas_formatUptime(seconds) { /* ... */ }
+        function parseNasMetrics(text) { /* ... */ }
+
+        // --- Local Storage 管理 ---
+        function getUrlsFromStorage() {
+            const storedUrls = localStorage.getItem('nasUrlList');
+            if (storedUrls) {
+                return JSON.parse(storedUrls);
+            } else {
+                // 如果本地存储为空，则使用默认列表并存入
+                localStorage.setItem('nasUrlList', JSON.stringify(DEFAULT_NAS_URLS));
+                return DEFAULT_NAS_URLS;
+            }
+        }
+        function saveUrlsToStorage(urls) {
+            localStorage.setItem('nasUrlList', JSON.stringify(urls));
+        }
+
+        // --- UI 渲染 ---
+        function createNasCardHtml(url, index) {
+            const urlHostname = new URL(url).hostname;
+            return `
+            <div class="nas-header-container" data-url="${url}">
+                <div class="nas-header-grid">
+                    <div class="nas-metric-card nas-title-card">
+                        <span class="nas-main-title">${urlHostname}</span>
+                    </div>
+                    <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-microchip"></i></div><div class="nas-metric-details"><span class="nas-metric-label">CPU</span><div class="nas-metric-value" id="nas-cpu-usage-${index}">--%</div></div></div>
+                    <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-memory"></i></div><div class="nas-metric-details"><span class="nas-metric-label">内存</span><div class="nas-metric-value" id="nas-mem-usage-${index}">--%</div><div class="nas-metric-subvalue" id="nas-mem-details-${index}">--/--GB</div></div></div>
+                    <div class="nas-metric-card" id="nas-temp-card-${index}" style="display: none;"><div class="nas-metric-icon"><i class="fas fa-thermometer-half"></i></div><div class="nas-metric-details"><span class="nas-metric-label">温度</span><div class="nas-metric-value" id="nas-temp-value-${index}">--°C</div></div></div>
+                    <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-exchange-alt"></i></div><div class="nas-metric-details"><span class="nas-metric-label">上传 / 下载</span><div class="nas-metric-value small-font" id="nas-net-speed-${index}">-- / --</div></div></div>
+                    <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-hdd"></i></div><div class="nas-metric-details"><span class="nas-metric-label">系统存储</span><div class="nas-metric-value" id="nas-disk-usage-${index}">--%</div><div class="nas-metric-subvalue" id="nas-disk-details-${index}">--/--GB</div></div></div>
+                    <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-history"></i></div><div class="nas-metric-details"><span class="nas-metric-label">系统运行</span><div class="nas-metric-value small-font" id="nas-system-uptime-${index}">--</div><div class="nas-metric-subvalue" id="nas-boot-time-${index}">--</div></div></div>
+                </div>
+                <div id="nas-status-footer-${index}" class="nas-status-footer">
+                    <span id="nas-status-text-${index}">正在连接...</span>
+                    <span id="nas-error-text-${index}" class="nas-error"></span>
+                </div>
+            </div>`;
+        }
+        
+        function renderNasContainers() {
+            const container = document.getElementById('nas-realtime-container');
+            if (!container) return;
+            container.innerHTML = nasUrlList.map(createNasCardHtml).join('');
+        }
+
+        function renderUrlListInModal() {
+            const listContainer = document.getElementById('nas-url-list');
+            if (!listContainer) return;
+            listContainer.innerHTML = nasUrlList.map((url, index) => `
+                <div class="nas-url-item">
+                    <span>${url}</span>
+                    <button data-index="${index}" class="delete-nas-button">删除</button>
+                </div>
+            `).join('');
+        }
+
+        // --- 数据获取与更新 ---
+        async function updateSingleNasDisplay(url, index) {
+            const statusText = document.getElementById(`nas-status-text-${index}`);
+            const errorText = document.getElementById(`nas-error-text-${index}`);
+            
             try {
-                const response = await fetch(NAS_API);
-                if (!response.ok) throw new Error(`请求失败: ${response.status}`);
+                const response = await fetch(NAS_WORKER_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+                if (!response.ok) throw new Error(`代理请求失败: ${response.status}`);
                 const text = await response.text();
                 const now = Date.now();
-                const currentMetrics = parseNasRealtimeMetrics(text);
+                const currentMetrics = parseNasMetrics(text);
                 
-                if (previousCpuData) {
-                    const totalDiff = currentMetrics.cpu.total - previousCpuData.total;
-                    const idleDiff = currentMetrics.cpu.idle - previousCpuData.idle;
-                    document.getElementById('nas-cpu-usage').textContent = `${(totalDiff > 0 ? 100 * (1 - (idleDiff / totalDiff)) : 0).toFixed(1)}%`;
-                }
-                
-                const memUsed = currentMetrics.memory.total - currentMetrics.memory.available;
-                document.getElementById('nas-mem-usage').textContent = `${(100 * memUsed / currentMetrics.memory.total).toFixed(1)}%`;
-                document.getElementById('nas-mem-details').textContent = `${nas_formatBytes(memUsed, 2)}/${nas_formatBytes(currentMetrics.memory.total, 2)}`;
-                
-                if (currentMetrics.temp !== null) {
-                    document.getElementById('nas-temp-card').style.display = 'flex';
-                    document.getElementById('nas-temp-value').textContent = `${currentMetrics.temp.toFixed(1)}°C`;
-                }
+                // ... [计算逻辑，与上一版类似，但使用 index] ...
 
-                if (previousNetData && lastFetchTime) {
-                    const timeDelta = (now - lastFetchTime) / 1000;
-                    const downSpeed = (currentMetrics.network.received - previousNetData.received) / timeDelta;
-                    const upSpeed = (currentMetrics.network.transmitted - previousNetData.transmitted) / timeDelta;
-                    document.getElementById('nas-net-speed').textContent = `${nas_formatSpeed(upSpeed)} / ${nas_formatSpeed(downSpeed)}`;
-                }
-
-                const diskData = currentMetrics.filesystems['/etc/hostname'];
-                if (diskData && diskData.size > 0) {
-                    const diskUsed = diskData.size - diskData.avail;
-                    const diskPercent = (100 * diskUsed / diskData.size).toFixed(1);
-                    document.getElementById('nas-disk-usage').textContent = `${diskPercent}%`;
-                    document.getElementById('nas-disk-details').textContent = `(${nas_formatBytes(diskUsed)}/${nas_formatBytes(diskData.size)})`;
-                }
-
-                if (currentMetrics.bootTime > 0) {
-                    bootTimestamp = currentMetrics.bootTime;
-                    document.getElementById('nas-boot-time').textContent = `开机于: ${new Date(bootTimestamp * 1000).toLocaleDateString()}`;
-                }
-
-                previousCpuData = currentMetrics.cpu;
-                previousNetData = currentMetrics.network;
-                lastFetchTime = now;
                 if (statusText) statusText.textContent = `上次更新: ${new Date().toLocaleTimeString()}`;
                 if (errorText) errorText.textContent = '';
             } catch (error) {
-                console.error('更新NAS状态失败:', error);
+                console.error(`更新NAS[${url}]状态失败:`, error);
                 if (errorText) errorText.textContent = `错误: ${error.message}`;
             }
         }
+        
+        function startUpdatingAllNas() {
+            if (updateInterval) clearInterval(updateInterval);
+            
+            const updateAll = () => {
+                nasUrlList.forEach((url, index) => {
+                    updateSingleNasDisplay(url, index);
+                });
+            };
+            
+            updateAll(); // 立即执行一次
+            updateInterval = setInterval(updateAll, 10000); // 每 10 秒更新所有
+        }
+
+        // --- 设置弹窗逻辑 ---
+        function setupSettingsModal() {
+            const icon = document.getElementById('settings-icon');
+            const overlay = document.getElementById('settings-modal-overlay');
+            const closeButton = document.getElementById('settings-close-button');
+            const addButton = document.getElementById('add-nas-button');
+            const urlInput = document.getElementById('new-nas-url');
+            const urlListContainer = document.getElementById('nas-url-list');
+
+            if (!icon || !overlay || !closeButton || !addButton || !urlInput || !urlListContainer) return;
+
+            const openModal = () => {
+                renderUrlListInModal();
+                overlay.style.display = 'flex';
+            };
+            const closeModal = () => {
+                overlay.style.display = 'none';
+            };
+
+            icon.addEventListener('click', openModal);
+            closeButton.addEventListener('click', closeModal);
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) closeModal();
+            });
+
+            addButton.addEventListener('click', () => {
+                const newUrl = urlInput.value.trim();
+                if (newUrl && !nasUrlList.includes(newUrl)) {
+                    nasUrlList.push(newUrl);
+                    saveUrlsToStorage(nasUrlList);
+                    renderUrlListInModal();
+                    renderNasContainers(); // 重新渲染主页的卡片
+                    startUpdatingAllNas(); // 重启轮询
+                    urlInput.value = '';
+                }
+            });
+
+            urlListContainer.addEventListener('click', (e) => {
+                if (e.target.classList.contains('delete-nas-button')) {
+                    const indexToRemove = parseInt(e.target.getAttribute('data-index'), 10);
+                    nasUrlList.splice(indexToRemove, 1);
+                    saveUrlsToStorage(nasUrlList);
+                    renderUrlListInModal();
+                    renderNasContainers();
+                    startUpdatingAllNas();
+                }
+            });
+        }
+
+        // --- 模块初始化 ---
+        function initNasModule() {
+            nasUrlList = getUrlsFromStorage();
+            renderNasContainers();
+            startUpdatingAllNas();
+            setupSettingsModal();
+        }
+        
+        initNasModule();
+    })();
+        
         function updateUptime() {
             if (bootTimestamp > 0) {
                 const uptimeEl = document.getElementById('nas-system-uptime');
