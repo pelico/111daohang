@@ -312,68 +312,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // --- 6. NAS 实时监控模块 (顶部) ---
-    (() => {
-        let previousCpuData = null, previousNetData = null, lastFetchTime = null, bootTimestamp = 0;
-        function nas_formatBytes(bytes, decimals = 1) {
-            if (bytes === undefined || bytes === null || bytes <= 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(decimals))} ${sizes[i]}`;
-        }
-        function nas_formatSpeed(bytesPerSecond, decimals = 2) {
-             if (bytesPerSecond === undefined || bytesPerSecond === null || bytesPerSecond < 1) return `0 KB/s`;
-            const k = 1024;
-            const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
-            const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
-            return `${parseFloat((bytesPerSecond / Math.pow(k, i)).toFixed(decimals))} ${sizes[i]}`;
-        }
-        function nas_formatUptime(seconds) {
-            if (!seconds || seconds <= 0) return '--';
-            seconds = Math.floor(seconds);
-            const d = Math.floor(seconds / 86400);
-            const h = Math.floor(seconds % 86400 / 3600);
-            const m = Math.floor(seconds % 3600 / 60);
-            return `${d}天 ${h}小时 ${m}分钟`;
-        }
-        function parseNasRealtimeMetrics(text) {
-            const metrics = { cpu: { total: 0, idle: 0 }, memory: { total: 0, available: 0 }, network: { received: 0, transmitted: 0 }, bootTime: 0, temp: null, filesystems: {} };
-            const targetInterfaces = ['eth0', 'wlan0'];
-            const targetMountpoint = '/etc/hostname';
-            const lines = text.split('\n');
-            for (const line of lines) {
-                if (line.startsWith('#')) continue;
-                const parts = line.split(' ');
-                const value = parseFloat(parts[1]);
-                if (line.startsWith('node_cpu_seconds_total')) {
-                    metrics.cpu.total += value;
-                    if (line.includes('mode="idle"')) metrics.cpu.idle += value;
-                } else if (line.startsWith('node_memory_MemTotal_bytes')) metrics.memory.total = value;
-                else if (line.startsWith('node_memory_MemAvailable_bytes')) metrics.memory.available = value;
-                else if (line.startsWith('node_network_receive_bytes_total') || line.startsWith('node_network_transmit_bytes_total')) {
-                    const isReceive = line.startsWith('node_network_receive_bytes_total');
-                    const interfaceMatch = line.match(/device="([^"]+)"/);
-                    if (interfaceMatch && targetInterfaces.includes(interfaceMatch[1])) {
-                        if (isReceive) metrics.network.received += value;
-                        else metrics.network.transmitted += value;
-                    }
-                } else if (line.startsWith('node_boot_time_seconds')) metrics.bootTime = value;
-                else if (line.startsWith('node_thermal_zone_temp') || line.startsWith('node_hwmon_temp_input')) {
-                     if (metrics.temp === null) metrics.temp = value;
-                }
-                else if (line.startsWith('node_filesystem_size_bytes') || line.startsWith('node_filesystem_avail_bytes')) {
-                    const mountpointMatch = line.match(/mountpoint="([^"]+)"/);
-                    if (mountpointMatch && mountpointMatch[1] === targetMountpoint) {
-                        const mountpoint = mountpointMatch[1];
-                        if (!metrics.filesystems[mountpoint]) metrics.filesystems[mountpoint] = { size: 0, avail: 0 };
-                        if (line.startsWith('node_filesystem_size_bytes')) metrics.filesystems[mountpoint].size = value;
-                        if (line.startsWith('node_filesystem_avail_bytes')) metrics.filesystems[mountpoint].avail = value;
-                    }
-                }
-            }
-            return metrics;
-        }
     // =======================================================
     // ===       【新版】NAS 实时动态监控模块 (顶部)        ===
     // =======================================================
