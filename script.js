@@ -166,7 +166,14 @@ document.addEventListener('DOMContentLoaded', function() {
             monitorDataCache = monitors;
             let totalUptime = 0;
             monitors.forEach(m => {
-                totalUptime += parseFloat(m.custom_uptime_ratios?.split('-')[0] || m.all_time_uptime_ratio || 0);
+                let uptimeRatio = parseFloat(m.custom_uptime_ratios?.split('-')[0]);
+                if ((isNaN(uptimeRatio) || uptimeRatio === 0) && m.status === 2) {
+                    uptimeRatio = 100.0;
+                }
+                else if (isNaN(uptimeRatio)) {
+                    uptimeRatio = parseFloat(m.all_time_uptime_ratio) || 0;
+                }
+                totalUptime += uptimeRatio;
             });
             const servicesHTML = monitors.map(monitor => {
                 const status = STATUS_MAP[monitor.status] || { text: '未知', class: 'status-warning', icon: 'fa-question-circle' };
@@ -201,17 +208,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const netCtx = document.getElementById('nasNetworkHistoryChart')?.getContext('2d');
         if (netCtx && history.network) {
             const datasets = [];
-            
             if (history.network.total && history.network.total.length > 0) {
                 datasets.push({ label: '总接收 (GB)', data: history.network.total.map(d => ({ x: d.timestamp * 1000, y: d.total_recv / 1024**3 })), borderColor: 'rgba(76, 175, 80, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4 });
                 datasets.push({ label: '总发送 (GB)', data: history.network.total.map(d => ({ x: d.timestamp * 1000, y: d.total_sent / 1024**3 })), borderColor: 'rgba(255, 152, 0, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4 });
             }
-            
             if (history.network.docker && history.network.docker.length > 0) {
-                 datasets.push({ label: 'Docker 发送 (GB)', data: history.network.docker.map(d => ({ x: d.timestamp * 1000, y: d.total_recv / 1024**3 })), borderColor: 'rgba(156, 39, 176, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4, borderDash: [5, 5] });
-                 datasets.push({ label: 'Docker 接收 (GB)', data: history.network.docker.map(d => ({ x: d.timestamp * 1000, y: d.total_sent / 1024**3 })), borderColor: 'rgba(8, 14, 153, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4, borderDash: [5, 5] });
+                 datasets.push({ label: 'Docker 接收 (GB)', data: history.network.docker.map(d => ({ x: d.timestamp * 1000, y: d.total_recv / 1024**3 })), borderColor: 'rgba(156, 39, 176, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4, borderDash: [5, 5] });
+                 datasets.push({ label: 'Docker 发送 (GB)', data: history.network.docker.map(d => ({ x: d.timestamp * 1000, y: d.total_sent / 1024**3 })), borderColor: 'rgba(8, 14, 153, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4, borderDash: [5, 5] });
             }
-
             if (datasets.length > 0) {
                 nasNetworkHistoryChart = new Chart(netCtx, { type: 'line', data: { datasets: datasets }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, title: { display: !isMobile, text: 'GB' }, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } } } });
             }
@@ -311,7 +315,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- 6. NAS 实时监控模块 (顶部) ---
     (() => {
         let previousCpuData = null, previousNetData = null, lastFetchTime = null, bootTimestamp = 0;
-        
         function nas_formatBytes(bytes, decimals = 1) {
             if (bytes === undefined || bytes === null || bytes <= 0) return '0 B';
             const k = 1024;
@@ -334,7 +337,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const m = Math.floor(seconds % 3600 / 60);
             return `${d}天 ${h}小时 ${m}分钟`;
         }
-
         function parseNasRealtimeMetrics(text) {
             const metrics = { cpu: { total: 0, idle: 0 }, memory: { total: 0, available: 0 }, network: { received: 0, transmitted: 0 }, bootTime: 0, temp: null, filesystems: {} };
             const targetInterfaces = ['eth0', 'wlan0'];
@@ -372,7 +374,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             return metrics;
         }
-
         async function updateNasDisplay() {
             const statusText = document.getElementById('nas-status-text');
             const errorText = document.getElementById('nas-error-text');
@@ -428,14 +429,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (errorText) errorText.textContent = `错误: ${error.message}`;
             }
         }
-        
         function updateUptime() {
             if (bootTimestamp > 0) {
                 const uptimeEl = document.getElementById('nas-system-uptime');
                 if (uptimeEl) uptimeEl.textContent = nas_formatUptime((Date.now() / 1000) - bootTimestamp);
             }
         }
-
         updateNasDisplay();
         setInterval(updateNasDisplay, 10000);
         setInterval(updateUptime, 1000);
@@ -447,7 +446,7 @@ document.addEventListener('DOMContentLoaded', function() {
         setInterval(updateTime, 1000);
         countSites();
         handleTabs();
-        initMonitoring();
+        initMonitoring(); // 现在这个函数会处理所有服务监控的加载
         const refreshBtn = document.getElementById('refresh-notifications-btn');
         if (refreshBtn) refreshBtn.addEventListener('click', fetchNotifications);
     }
