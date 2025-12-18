@@ -288,7 +288,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const m = Math.floor(seconds % 3600 / 60);
             return `${d}天 ${h}小时 ${m}分钟`;
         }
-
         function parseNasRealtimeMetrics(text) {
             const metrics = { cpu: { total: 0, idle: 0 }, memory: { total: 0, available: 0 }, network: { received: 0, transmitted: 0 }, bootTime: 0, temp: null, filesystems: {} };
             const ignoredInterfaces = /^(lo|veth|docker0|tailscale0)/;
@@ -296,7 +295,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const networkData = {};
             const targetMountpoint = '/etc/hostname';
             const lines = text.split('\n');
-
             for (const line of lines) {
                 if (line.startsWith('#')) continue;
                 const parts = line.split(' ');
@@ -332,7 +330,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
             }
-
             for (const device in networkData) {
                 if (!ignoredInterfaces.test(device)) {
                     primaryInterface = device;
@@ -342,7 +339,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!primaryInterface && networkData['eth0']) {
                 primaryInterface = 'eth0';
             }
-            
             if (primaryInterface && networkData[primaryInterface]) {
                 metrics.network = networkData[primaryInterface];
             }
@@ -426,7 +422,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (statusText) statusText.textContent = `上次更新: ${new Date().toLocaleTimeString()}`;
                 if (errorText) errorText.textContent = '';
             } catch (error) {
-                console.error(`更新NAS状态失败:`, error);
+                console.error(`更新NAS[${url}]状态失败:`, error);
                 if (errorText) errorText.textContent = `错误: ${error.message}`;
             }
         }
@@ -497,6 +493,7 @@ document.addEventListener('DOMContentLoaded', function() {
         countSites();
         handleTabs();
         initNasModule();
+        // 服务监控保持懒加载
         const refreshBtn = document.getElementById('refresh-notifications-btn');
         if (refreshBtn) refreshBtn.addEventListener('click', fetchNotifications);
     }
