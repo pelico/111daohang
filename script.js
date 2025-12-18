@@ -7,8 +7,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const MONITORING_PROXY_API = 'https://up-api.111312.xyz/';
     const WEATHER_API = 'https://tq-api.111312.xyz';
     const NAS_WORKER_URL = 'https://nas-hook.111312.xyz/';
-
-    // --- 全局变量 ---
+    
+    // --- 全局变量和状态 ---
     let monitorDataCache = [];
     let notificationsLoaded = false;
     let weatherLoaded = false;
@@ -288,6 +288,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const m = Math.floor(seconds % 3600 / 60);
             return `${d}天 ${h}小时 ${m}分钟`;
         }
+
         function parseNasRealtimeMetrics(text) {
             const metrics = { cpu: { total: 0, idle: 0 }, memory: { total: 0, available: 0 }, network: { received: 0, transmitted: 0 }, bootTime: 0, temp: null, filesystems: {} };
             const ignoredInterfaces = /^(lo|veth|docker0|tailscale0)/;
@@ -386,37 +387,45 @@ document.addEventListener('DOMContentLoaded', function() {
                 const now = Date.now();
                 const instance = nasInstances[url] || {};
                 const currentMetrics = parseNasRealtimeMetrics(text);
+                
+                const updateElement = (id, content) => {
+                    const el = document.getElementById(id);
+                    if (el) el.innerHTML = content;
+                };
+
                 if (instance.previousCpuData) {
                     const totalDiff = currentMetrics.cpu.total - instance.previousCpuData.total;
                     const idleDiff = currentMetrics.cpu.idle - instance.previousCpuData.idle;
-                    document.getElementById(`nas-cpu-usage-${index}`).textContent = `${(totalDiff > 0 ? 100 * (1 - (idleDiff / totalDiff)) : 0).toFixed(1)}%`;
+                    updateElement(`nas-cpu-usage-${index}`, `${(totalDiff > 0 ? 100 * (1 - (idleDiff / totalDiff)) : 0).toFixed(1)}%`);
                 }
                 const memUsed = currentMetrics.memory.total - currentMetrics.memory.available;
-                document.getElementById(`nas-mem-usage-${index}`).textContent = `${(100 * memUsed / currentMetrics.memory.total).toFixed(1)}%`;
-                document.getElementById(`nas-mem-details-${index}`).textContent = `${nas_formatBytes(memUsed, 2)}/${nas_formatBytes(currentMetrics.memory.total, 2)}`;
+                updateElement(`nas-mem-usage-${index}`, `${(100 * memUsed / currentMetrics.memory.total).toFixed(1)}%`);
+                updateElement(`nas-mem-details-${index}`, `${nas_formatBytes(memUsed, 2)}/${nas_formatBytes(currentMetrics.memory.total, 2)}`);
+                
                 if (currentMetrics.temp !== null) {
-                    document.getElementById(`nas-temp-card-${index}`).style.display = 'flex';
-                    document.getElementById(`nas-temp-value-${index}`).textContent = `${currentMetrics.temp.toFixed(1)}°C`;
+                    const tempCard = document.getElementById(`nas-temp-card-${index}`);
+                    if (tempCard) tempCard.style.display = 'flex';
+                    updateElement(`nas-temp-value-${index}`, `${currentMetrics.temp.toFixed(1)}°C`);
                 }
                 if (instance.previousNetData && instance.lastFetchTime) {
                     const timeDelta = (now - instance.lastFetchTime) / 1000;
                     if(timeDelta > 0) {
                         const downSpeed = (currentMetrics.network.received - instance.previousNetData.received) / timeDelta;
                         const upSpeed = (currentMetrics.network.transmitted - instance.previousNetData.transmitted) / timeDelta;
-                        document.getElementById(`nas-net-speed-${index}`).textContent = `${nas_formatSpeed(upSpeed)} / ${nas_formatSpeed(downSpeed)}`;
+                        updateElement(`nas-net-speed-${index}`, `${nas_formatSpeed(upSpeed)} / ${nas_formatSpeed(downSpeed)}`);
                     }
                 }
                 const diskData = currentMetrics.filesystems['/etc/hostname'];
                 if (diskData && diskData.size > 0) {
                     const diskUsed = diskData.size - diskData.avail;
                     const diskPercent = (100 * diskUsed / diskData.size).toFixed(1);
-                    document.getElementById(`nas-disk-usage-${index}`).textContent = `${diskPercent}%`;
-                    document.getElementById(`nas-disk-details-${index}`).textContent = `(${nas_formatBytes(diskUsed)}/${nas_formatBytes(diskData.size)})`;
+                    updateElement(`nas-disk-usage-${index}`, `${diskPercent}%`);
+                    updateElement(`nas-disk-details-${index}`, `(${nas_formatBytes(diskUsed)}/${nas_formatBytes(diskData.size)})`);
                 }
                 if (currentMetrics.bootTime > 0) {
                     nasInstances[url] = { ...nasInstances[url], bootTimestamp: currentMetrics.bootTime };
                     const bootDate = new Date(currentMetrics.bootTime * 1000);
-                    document.getElementById(`nas-boot-time-${index}`).textContent = `开机于: ${bootDate.toLocaleDateString()}`;
+                    updateElement(`nas-boot-time-${index}`, `开机于: ${bootDate.toLocaleDateString()}`);
                 }
                 nasInstances[url] = { ...nasInstances[url], previousCpuData: currentMetrics.cpu, previousNetData: currentMetrics.network, lastFetchTime: now };
                 if (statusText) statusText.textContent = `上次更新: ${new Date().toLocaleTimeString()}`;
@@ -493,7 +502,6 @@ document.addEventListener('DOMContentLoaded', function() {
         countSites();
         handleTabs();
         initNasModule();
-        // 服务监控保持懒加载
         const refreshBtn = document.getElementById('refresh-notifications-btn');
         if (refreshBtn) refreshBtn.addEventListener('click', fetchNotifications);
     }
