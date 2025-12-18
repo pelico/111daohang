@@ -6,8 +6,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const NOTIFICATIONS_API = 'https://jy-api.111312.xyz/notifications';
     const MONITORING_PROXY_API = 'https://up-api.111312.xyz/';
     const WEATHER_API = 'https://tq-api.111312.xyz';
-    const NAS_API = 'https://nas-hook.111312.xyz/';
-
+    
     // --- 全局变量和状态 ---
     let monitorDataCache = [];
     let notificationsLoaded = false;
@@ -115,7 +114,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     async function initMonitoring() {
         const container = document.getElementById('tab-monitoring');
-        if (container && !container.innerHTML.trim()) { 
+        if (container) { 
             container.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><p>正在加载服务监控数据...</p></div>`; 
         }
         
@@ -536,7 +535,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
         
-        // 模块的启动点
         nasUrlList = getUrlsFromStorage();
         renderNasContainers();
         startUpdatingAllNas();
@@ -550,10 +548,7 @@ document.addEventListener('DOMContentLoaded', function() {
         setInterval(updateTime, 1000);
         countSites();
         handleTabs();
-        initNasModule(); // 【已修正】确保 NAS 模块在主初始化函数中被调用
-        
-        // 服务监控保持懒加载
-        
+        initNasModule(); // 确保 NAS 模块在主初始化函数中被调用
         const refreshBtn = document.getElementById('refresh-notifications-btn');
         if (refreshBtn) refreshBtn.addEventListener('click', fetchNotifications);
     }
