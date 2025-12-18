@@ -426,7 +426,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (statusText) statusText.textContent = `上次更新: ${new Date().toLocaleTimeString()}`;
                 if (errorText) errorText.textContent = '';
             } catch (error) {
-                console.error(`更新NAS[${url}]状态失败:`, error);
+                console.error(`更新NAS状态失败:`, error);
                 if (errorText) errorText.textContent = `错误: ${error.message}`;
             }
         }
