@@ -10,7 +10,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 </head>
 <body>
-    <!-- 设置图标和弹窗保持不变 -->
+    <!-- 设置图标和弹窗 -->
     <div class="settings-icon" id="settings-icon"><i class="fas fa-cog"></i></div>
     <div class="settings-modal-overlay" id="settings-modal-overlay" style="display: none;">
         <div class="settings-modal">
@@ -31,7 +31,7 @@
     </div>
 
     <div class="container">
-        <!-- 顶部信息栏和主标题保持不变 -->
+        <!-- 顶部信息栏 -->
         <div class="top-bar">
              <div class="time-info">
                 <div class="time" id="current-time">00:00:00</div>
@@ -44,49 +44,45 @@
                 </form>
             </div>
         </div>
+        
+        <!-- 主标题 -->
         <div class="main-title">
             <h1>Valar Morghulis 凡人皆有一死</h1>
             <p>想到啥赶紧干</p>
         </div>
 
-        <!-- ======================================================= -->
-        <!--           【新版】NAS 实时表格监控模块                  -->
-        <!-- ======================================================= -->
-        <div id="nas-table-container" class="nas-table-container">
-            <!-- 实时 NAS 监控表格将由 JS 动态生成 -->
-            <div class="loading-state">
-                <div class="loading-spinner"></div>
-                <p>正在加载 NAS 状态...</p>
-            </div>
+        <!-- 【已修正】NAS 实时状态监控模块 -->
+        <div id="nas-grid-container" class="nas-header-grid">
+            <!-- 实时 NAS 监控卡片将由 JS 动态生成 -->
         </div>
-        <!-- ======================================================= -->
 
-        <!-- 选项卡切换和内容区域保持不变 -->
+        <!-- 选项卡切换 -->
         <div class="tabs">
             <button class="tab-button active" data-tab="tab-links"><i class="fas fa-star"></i> 常用网站</button>
             <button class="tab-button" data-tab="tab-monitoring"><i class="fas fa-heartbeat"></i> 服务监控</button>
             <button class="tab-button" data-tab="tab-notifications"><i class="fas fa-bell"></i> 我的通知</button>
             <button class="tab-button" data-tab="tab-weather"><i class="fas fa-cloud-sun"></i> 天气仪表盘</button>
         </div>
+
+        <!-- 选项卡内容区域 -->
         <div class="tab-content active" id="tab-links">
              <div class="nav-grid">
                 <div class="nav-category">
                     <div class="category-title"><i class="fas fa-star"></i><h2>常用网站</h2></div>
                     <div class="nav-links">
-                        <a href="https://web.sgwbox.com/home" target="_blank" class="nav-link"><i class="fab fa-chrome"></i> 拾光坞网页版</a>
-                        <a href="https://mm.111312.xyz" target="_blank" class="nav-link"><i class="fab fa-weixin"></i> Memos</a>
-                        <a href="https://ql.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-question-circle"></i> 青龙</a>
-                        <a href="https://otp.111312.xyz/" target="_blank" class="nav-link"><i class="fab fa-github"></i> OTP验证码</a>
-                        <a href="https://sgw.111312.xyz/#/" target="_blank" class="nav-link"><i class="fab fa-stack-overflow"></i> Sgw网盘</a>
+                        <a href="https://web.sgwbox.com/home" target="_blank" class="nav-link"><i class="fab fa-chrome"></i> SgwWeb</a>
+                        <a href="https://ql.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-question-circle"></i> Qinglong</a>
+                        <a href="https://otp.111312.xyz/" target="_blank" class="nav-link"><i class="fab fa-github"></i> OTP</a>
+                        <a href="https://sgw.111312.xyz/#/" target="_blank" class="nav-link"><i class="fab fa-stack-overflow"></i> SgwAlist</a>
                         <a href="https://lt.111312.xyz/" target="_blank" class="nav-link"><i class="fab fa-weibo"></i> vocechat</a>
-                        <a href="https://cs.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> 文件投送</a>
-                        <a href="https://sync.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> Syncthing同步</a>
-                        <a href="https://tv.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> CF电影</a>
-                        <a href="https://n8n.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> N8N</a>
-                        <a href="https://m3u.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> M3u8下载</a>
+                        <a href="https://cs.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> Snapdrop</a>
+                        <a href="https://sync.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> Syncthing</a>
+                        <a href="https://stv.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> SgwTV</a>
+                        <a href="https://ypm.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> YesMusic</a>
+                        <a href="https://up.111312.xyz/" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> UpWeb</a>
                         <a href="https://dash.cloudflare.com/7dcad7e5c925385adde3ce2a3f5bb271/home/domains" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> Cloudflare</a>
-                        <a href="https://tao.111312.xyz/#/home" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> Tao网盘同步</a>
-                        <a href="https://d8u4-my.sharepoint.com/my" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> Onedrive云盘</a>
+                        <a href="https://tao.111312.xyz/#/home" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> Taosync</a>
+                        <a href="https://d8u4-my.sharepoint.com/my" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> Onedrive</a>
                         <a href="https://dashboard.cpolar.com/status" target="_blank" class="nav-link"><i class="fas fa-play-circle"></i> cpolar</a>
                     </div>
                 </div>
