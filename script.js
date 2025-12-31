@@ -316,6 +316,8 @@ document.addEventListener('DOMContentLoaded', function() {
         let nasInstances = {};
         let nasUrlList = [];
         let updateInterval;
+        let totalSpeeds = { up: 0, down: 0 };
+        const originalTitle = document.title;
 
         function nas_formatBytes(bytes, decimals = 1) {
             if (bytes === undefined || bytes === null || bytes <= 0) return '0 B';
