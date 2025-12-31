@@ -6,9 +6,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const NOTIFICATIONS_API = 'https://jy-api.111312.xyz/notifications';
     const MONITORING_PROXY_API = 'https://up-api.111312.xyz/';
     const WEATHER_API = 'https://tq-api.111312.xyz';
-    const NAS_API = 'https://nas-hook.111312.xyz/';
-
-    // --- 全局变量 ---
+    
+    // --- 全局变量和状态 ---
     let monitorDataCache = [];
     let notificationsLoaded = false;
     let weatherLoaded = false;
@@ -18,11 +17,21 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- 1. 基础功能 ---
     function updateTime() {
         const now = new Date();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        const year = now.getFullYear();
+        const month = now.getMonth() + 1;
+        const day = now.getDate();
+        const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+        const weekday = weekdays[now.getDay()];
+        
         const timeEl = document.getElementById('current-time');
         const dateEl = document.getElementById('current-date');
-        if (timeEl) timeEl.textContent = now.toLocaleTimeString('zh-CN', { hour12: false });
-        if (dateEl) dateEl.textContent = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 ${['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][now.getDay()]}`;
+        if (timeEl) timeEl.textContent = `${hours}:${minutes}:${seconds}`;
+        if (dateEl) dateEl.textContent = `${year}年${month}月${day}日 ${weekday}`;
     }
+
     function countSites() {
         const sites = document.querySelectorAll('.nav-link');
         const siteCountEl = document.getElementById('site-count');
@@ -41,9 +50,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 const tabId = button.getAttribute('data-tab');
                 const activeTab = document.getElementById(tabId);
                 if (activeTab) activeTab.classList.add('active');
-                if (tabId === 'tab-monitoring' && !monitoringLoaded) { initMonitoring(); monitoringLoaded = true; }
-                if (tabId === 'tab-notifications' && !notificationsLoaded) { fetchNotifications(); notificationsLoaded = true; }
-                if (tabId === 'tab-weather' && !weatherLoaded) { fetchWeatherData(); weatherLoaded = true; }
+
+                if (tabId === 'tab-monitoring' && !monitoringLoaded) {
+                    initMonitoring();
+                    monitoringLoaded = true;
+                }
+                if (tabId === 'tab-notifications' && !notificationsLoaded) {
+                    fetchNotifications();
+                    notificationsLoaded = true;
+                }
+                if (tabId === 'tab-weather' && !weatherLoaded) {
+                    fetchWeatherData();
+                    weatherLoaded = true;
+                }
             });
         });
     }
@@ -257,7 +276,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- 6. NAS 实时动态监控模块 (顶部) ---
     function initNasModule() {
-        const NAS_WORKER_URL = 'https://nas-hook.111312.xyz/';
         const DEFAULT_NAS_URLS = [
             'https://nas-api.111312.xyz/metrics',
             'https://wkyapi.111312.xyz/metrics'
@@ -266,6 +284,10 @@ document.addEventListener('DOMContentLoaded', function() {
         let nasInstances = {};
         let nasUrlList = [];
         let updateInterval;
+        
+        // 【新增】用于在标题栏显示总网速
+        let totalSpeeds = { up: 0, down: 0 };
+        const originalTitle = document.title;
 
         function nas_formatBytes(bytes, decimals = 1) {
             if (bytes === undefined || bytes === null || bytes <= 0) return '0 B';
@@ -380,8 +402,15 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!listContainer) return;
             listContainer.innerHTML = nasUrlList.map((url, index) => `<div class="nas-url-item"> <span>${url}</span> <button data-index="${index}" class="delete-nas-button">删除</button> </div>`).join('');
         }
+        
+        // 【新增】更新浏览器选项卡标题的函数
+        function updatePageTitle() {
+            const upSpeed = nas_formatSpeed(totalSpeeds.up, 1);
+            const downSpeed = nas_formatSpeed(totalSpeeds.down, 1);
+            document.title = `↑${upSpeed} / ↓${downSpeed} | ${originalTitle}`;
+        }
+
         async function updateSingleNasDisplay(url, index) {
-            const statusText = document.getElementById(`nas-status-text-${index}`);
             const errorText = document.getElementById(`nas-error-text-${index}`);
             try {
                 const response = await fetch(NAS_WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url }) });
@@ -391,44 +420,58 @@ document.addEventListener('DOMContentLoaded', function() {
                 const now = Date.now();
                 const instance = nasInstances[url] || {};
                 const currentMetrics = parseNasRealtimeMetrics(text);
+                
+                const updateElement = (id, content) => {
+                    const el = document.getElementById(id);
+                    if (el) el.innerHTML = content;
+                };
+
                 if (instance.previousCpuData) {
                     const totalDiff = currentMetrics.cpu.total - instance.previousCpuData.total;
                     const idleDiff = currentMetrics.cpu.idle - instance.previousCpuData.idle;
-                    document.getElementById(`nas-cpu-usage-${index}`).textContent = `${(totalDiff > 0 ? 100 * (1 - (idleDiff / totalDiff)) : 0).toFixed(1)}%`;
+                    updateElement(`nas-cpu-usage-${index}`, `${(totalDiff > 0 ? 100 * (1 - (idleDiff / totalDiff)) : 0).toFixed(1)}%`);
                 }
                 const memUsed = currentMetrics.memory.total - currentMetrics.memory.available;
-                document.getElementById(`nas-mem-usage-${index}`).textContent = `${(100 * memUsed / currentMetrics.memory.total).toFixed(1)}%`;
-                document.getElementById(`nas-mem-details-${index}`).textContent = `${nas_formatBytes(memUsed, 2)}/${nas_formatBytes(currentMetrics.memory.total, 2)}`;
+                updateElement(`nas-mem-usage-${index}`, `${(100 * memUsed / currentMetrics.memory.total).toFixed(1)}%`);
+                updateElement(`nas-mem-details-${index}`, `${nas_formatBytes(memUsed, 2)}/${nas_formatBytes(currentMetrics.memory.total, 2)}`);
+                
+                const tempCard = document.getElementById(`nas-temp-card-${index}`);
                 if (currentMetrics.temp !== null) {
-                    document.getElementById(`nas-temp-card-${index}`).style.display = 'flex';
-                    document.getElementById(`nas-temp-value-${index}`).textContent = `${currentMetrics.temp.toFixed(1)}°C`;
+                    if(tempCard) tempCard.style.display = 'flex';
+                    updateElement(`nas-temp-value-${index}`, `${currentMetrics.temp.toFixed(1)}°C`);
                 }
+                
+                let upSpeed = 0, downSpeed = 0;
                 if (instance.previousNetData && instance.lastFetchTime) {
                     const timeDelta = (now - instance.lastFetchTime) / 1000;
                     if(timeDelta > 0) {
-                        const downSpeed = (currentMetrics.network.received - instance.previousNetData.received) / timeDelta;
-                        const upSpeed = (currentMetrics.network.transmitted - instance.previousNetData.transmitted) / timeDelta;
-                        document.getElementById(`nas-net-speed-${index}`).textContent = `${nas_formatSpeed(upSpeed)} / ${nas_formatSpeed(downSpeed)}`;
+                        downSpeed = (currentMetrics.network.received - instance.previousNetData.received) / timeDelta;
+                        upSpeed = (currentMetrics.network.transmitted - instance.previousNetData.transmitted) / timeDelta;
+                        updateElement(`nas-net-speed-${index}`, `${nas_formatSpeed(upSpeed)} / ${nas_formatSpeed(downSpeed)}`);
                     }
                 }
+                nasInstances[url] = { ...nasInstances[url], upSpeed: upSpeed, downSpeed: downSpeed };
+
                 const diskData = currentMetrics.filesystems['/etc/hostname'];
                 if (diskData && diskData.size > 0) {
                     const diskUsed = diskData.size - diskData.avail;
                     const diskPercent = (100 * diskUsed / diskData.size).toFixed(1);
-                    document.getElementById(`nas-disk-usage-${index}`).textContent = `${diskPercent}%`;
-                    document.getElementById(`nas-disk-details-${index}`).textContent = `(${nas_formatBytes(diskUsed)}/${nas_formatBytes(diskData.size)})`;
+                    updateElement(`nas-disk-usage-${index}`, `${diskPercent}%`);
+                    updateElement(`nas-disk-details-${index}`, `(${nas_formatBytes(diskUsed)}/${nas_formatBytes(diskData.size)})`);
                 }
                 if (currentMetrics.bootTime > 0) {
                     nasInstances[url] = { ...nasInstances[url], bootTimestamp: currentMetrics.bootTime };
                     const bootDate = new Date(currentMetrics.bootTime * 1000);
-                    document.getElementById(`nas-boot-time-${index}`).textContent = `开机于: ${bootDate.toLocaleDateString()}`;
+                    updateElement(`nas-boot-time-${index}`, `开机于: ${bootDate.toLocaleDateString()}`);
                 }
                 nasInstances[url] = { ...nasInstances[url], previousCpuData: currentMetrics.cpu, previousNetData: currentMetrics.network, lastFetchTime: now };
+                const statusText = document.getElementById(`nas-status-text-${index}`);
                 if (statusText) statusText.textContent = `上次更新: ${new Date().toLocaleTimeString()}`;
                 if (errorText) errorText.textContent = '';
             } catch (error) {
                 console.error(`更新NAS[${url}]状态失败:`, error);
                 if (errorText) errorText.textContent = `错误: ${error.message}`;
+                nasInstances[url] = { ...nasInstances[url], upSpeed: 0, downSpeed: 0 };
             }
         }
         function updateAllUptimes() {
@@ -442,7 +485,19 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         function startUpdatingAllNas() {
             if (updateInterval) clearInterval(updateInterval);
-            const updateAll = () => { nasUrlList.forEach((url, index) => { updateSingleNasDisplay(url, index); }); };
+            const updateAll = async () => {
+                const updatePromises = nasUrlList.map((url, index) => updateSingleNasDisplay(url, index));
+                await Promise.all(updatePromises);
+                
+                totalSpeeds = { up: 0, down: 0 };
+                for (const url in nasInstances) {
+                    if (nasUrlList.includes(url)) {
+                        totalSpeeds.up += nasInstances[url].upSpeed || 0;
+                        totalSpeeds.down += nasInstances[url].downSpeed || 0;
+                    }
+                }
+                updatePageTitle();
+            };
             updateAll();
             updateInterval = setInterval(updateAll, 10000);
         }
@@ -484,7 +539,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
         
-        // 模块的启动点
         nasUrlList = getUrlsFromStorage();
         renderNasContainers();
         startUpdatingAllNas();
@@ -498,10 +552,7 @@ document.addEventListener('DOMContentLoaded', function() {
         setInterval(updateTime, 1000);
         countSites();
         handleTabs();
-        initNasModule(); // 【已修正】确保 NAS 模块在主初始化函数中被调用
-        
-        // 服务监控保持懒加载
-        
+        initNasModule();
         const refreshBtn = document.getElementById('refresh-notifications-btn');
         if (refreshBtn) refreshBtn.addEventListener('click', fetchNotifications);
     }
