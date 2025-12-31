@@ -7,8 +7,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const MONITORING_PROXY_API = 'https://up-api.111312.xyz/';
     const WEATHER_API = 'https://tq-api.111312.xyz';
     const NAS_WORKER_URL = 'https://nas-hook.111312.xyz/';
-    
-    // --- 全局变量和状态 ---
+
+    // --- 全局变量 ---
     let monitorDataCache = [];
     let notificationsLoaded = false;
     let weatherLoaded = false;
@@ -18,21 +18,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- 1. 基础功能 ---
     function updateTime() {
         const now = new Date();
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const seconds = String(now.getSeconds()).padStart(2, '0');
-        const year = now.getFullYear();
-        const month = now.getMonth() + 1;
-        const day = now.getDate();
-        const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-        const weekday = weekdays[now.getDay()];
-        
         const timeEl = document.getElementById('current-time');
         const dateEl = document.getElementById('current-date');
-        if (timeEl) timeEl.textContent = `${hours}:${minutes}:${seconds}`;
-        if (dateEl) dateEl.textContent = `${year}年${month}月${day}日 ${weekday}`;
+        if (timeEl) timeEl.textContent = now.toLocaleTimeString('zh-CN', { hour12: false });
+        if (dateEl) dateEl.textContent = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 ${['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][now.getDay()]}`;
     }
-
     function countSites() {
         const sites = document.querySelectorAll('.nav-link');
         const siteCountEl = document.getElementById('site-count');
@@ -51,19 +41,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 const tabId = button.getAttribute('data-tab');
                 const activeTab = document.getElementById(tabId);
                 if (activeTab) activeTab.classList.add('active');
-
-                if (tabId === 'tab-monitoring' && !monitoringLoaded) {
-                    initMonitoring();
-                    monitoringLoaded = true;
-                }
-                if (tabId === 'tab-notifications' && !notificationsLoaded) {
-                    fetchNotifications();
-                    notificationsLoaded = true;
-                }
-                if (tabId === 'tab-weather' && !weatherLoaded) {
-                    fetchWeatherData();
-                    weatherLoaded = true;
-                }
+                if (tabId === 'tab-monitoring' && !monitoringLoaded) { initMonitoring(); monitoringLoaded = true; }
+                if (tabId === 'tab-notifications' && !notificationsLoaded) { fetchNotifications(); notificationsLoaded = true; }
+                if (tabId === 'tab-weather' && !weatherLoaded) { fetchWeatherData(); weatherLoaded = true; }
             });
         });
     }
@@ -285,8 +265,6 @@ document.addEventListener('DOMContentLoaded', function() {
         let nasInstances = {};
         let nasUrlList = [];
         let updateInterval;
-        
-        // 【新增】用于在标题栏显示总网速
         let totalSpeeds = { up: 0, down: 0 };
         const originalTitle = document.title;
 
@@ -312,7 +290,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const m = Math.floor(seconds % 3600 / 60);
             return `${d}天 ${h}小时 ${m}分钟`;
         }
-
         function parseNasRealtimeMetrics(text) {
             const metrics = { cpu: { total: 0, idle: 0 }, memory: { total: 0, available: 0 }, network: { received: 0, transmitted: 0 }, bootTime: 0, temp: null, filesystems: {} };
             const ignoredInterfaces = /^(lo|veth|docker0|tailscale0)/;
@@ -320,7 +297,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const networkData = {};
             const targetMountpoint = '/etc/hostname';
             const lines = text.split('\n');
-
             for (const line of lines) {
                 if (line.startsWith('#')) continue;
                 const parts = line.split(' ');
@@ -356,7 +332,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
             }
-
             for (const device in networkData) {
                 if (!ignoredInterfaces.test(device)) {
                     primaryInterface = device;
@@ -366,7 +341,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!primaryInterface && networkData['eth0']) {
                 primaryInterface = 'eth0';
             }
-            
             if (primaryInterface && networkData[primaryInterface]) {
                 metrics.network = networkData[primaryInterface];
             }
@@ -404,7 +378,6 @@ document.addEventListener('DOMContentLoaded', function() {
             listContainer.innerHTML = nasUrlList.map((url, index) => `<div class="nas-url-item"> <span>${url}</span> <button data-index="${index}" class="delete-nas-button">删除</button> </div>`).join('');
         }
         
-        // 【新增】更新浏览器选项卡标题的函数
         function updatePageTitle() {
             const upSpeed = nas_formatSpeed(totalSpeeds.up, 1);
             const downSpeed = nas_formatSpeed(totalSpeeds.down, 1);
