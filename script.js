@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const NOTIFICATIONS_API = 'https://jy-api.111312.xyz/notifications';
     const MONITORING_PROXY_API = 'https://up-api.111312.xyz/';
     const WEATHER_API = 'https://tq-api.111312.xyz';
+    const NAS_WORKER_URL = 'https://nas-hook.111312.xyz/';
     
     // --- 全局变量和状态 ---
     let monitorDataCache = [];
