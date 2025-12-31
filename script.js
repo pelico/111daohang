@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const WEATHER_API = 'https://tq-api.111312.xyz';
     const NAS_WORKER_URL = 'https://nas-hook.111312.xyz/';
 
-    // --- 全局变量和状态 ---
+    // --- 全局变量 ---
     let monitorDataCache = [];
     let notificationsLoaded = false;
     let weatherLoaded = false;
@@ -18,21 +18,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- 1. 基础功能 ---
     function updateTime() {
         const now = new Date();
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const seconds = String(now.getSeconds()).padStart(2, '0');
-        const year = now.getFullYear();
-        const month = now.getMonth() + 1;
-        const day = now.getDate();
-        const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-        const weekday = weekdays[now.getDay()];
-        
         const timeEl = document.getElementById('current-time');
         const dateEl = document.getElementById('current-date');
-        if (timeEl) timeEl.textContent = `${hours}:${minutes}:${seconds}`;
-        if (dateEl) dateEl.textContent = `${year}年${month}月${day}日 ${weekday}`;
+        if (timeEl) timeEl.textContent = now.toLocaleTimeString('zh-CN', { hour12: false });
+        if (dateEl) dateEl.textContent = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 ${['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][now.getDay()]}`;
     }
-
     function countSites() {
         const sites = document.querySelectorAll('.nav-link');
         const siteCountEl = document.getElementById('site-count');
@@ -51,19 +41,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 const tabId = button.getAttribute('data-tab');
                 const activeTab = document.getElementById(tabId);
                 if (activeTab) activeTab.classList.add('active');
-
-                if (tabId === 'tab-monitoring' && !monitoringLoaded) {
-                    initMonitoring();
-                    monitoringLoaded = true;
-                }
-                if (tabId === 'tab-notifications' && !notificationsLoaded) {
-                    fetchNotifications();
-                    notificationsLoaded = true;
-                }
-                if (tabId === 'tab-weather' && !weatherLoaded) {
-                    fetchWeatherData();
-                    weatherLoaded = true;
-                }
+                if (tabId === 'tab-monitoring' && !monitoringLoaded) { initMonitoring(); monitoringLoaded = true; }
+                if (tabId === 'tab-notifications' && !notificationsLoaded) { fetchNotifications(); notificationsLoaded = true; }
+                if (tabId === 'tab-weather' && !weatherLoaded) { fetchWeatherData(); weatherLoaded = true; }
             });
         });
     }
@@ -105,62 +85,40 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // --- 4. 服务监控功能 (UptimeRobot + NAS History) ---
+    // --- 4. 服务监控功能 ---
     const STATUS_MAP = { 0: { text: '暂停中', class: 'status-warning', icon: 'fa-pause-circle' }, 1: { text: '未检查', class: 'status-warning', icon: 'fa-question-circle' }, 2: { text: '运行中', class: 'status-up', icon: 'fa-check-circle' }, 8: { text: '疑似故障', class: 'status-warning', icon: 'fa-exclamation-circle' }, 9: { text: '服务中断', class: 'status-down', icon: 'fa-times-circle' } };
-    
     function showMonitoringError(message) {
         const container = document.getElementById('tab-monitoring');
         if (container) container.innerHTML = `<div class="error-state"><h2>加载数据失败</h2><p>${message}</p></div>`;
     }
-    
     async function initMonitoring() {
         const container = document.getElementById('tab-monitoring');
-        if (container && !container.innerHTML.trim()) { 
-            container.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><p>正在加载服务监控数据...</p></div>`; 
-        }
-        
+        if (container) { container.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><p>正在加载服务监控数据...</p></div>`; }
         try {
             const response = await fetch(MONITORING_PROXY_API, { method: 'POST', cache: 'no-cache' });
             if (!response.ok) throw new Error(`API 请求失败: ${response.status}`);
-            
             const data = await response.json();
             if (data.stat === 'fail') throw new Error(`API 返回错误: ${(data.error || {}).message || '未知'}`);
-            
             renderCombinedMonitoringPage(data);
-
         } catch (error) {
             console.error('获取监控数据失败:', error);
             showMonitoringError(error.message);
         }
     }
-
     function renderCombinedMonitoringPage(data) {
         const container = document.getElementById('tab-monitoring');
         if (!container) return;
         container.innerHTML = '';
-
         const hasNasHistory = data.nas_history && (data.nas_history.cpu?.length > 0 || data.nas_history.network?.total?.length > 0 || data.nas_history.temp?.length > 0);
         const hasMonitors = data.monitors && data.monitors.length > 0;
-
-        if (!hasNasHistory && !hasMonitors) {
-            showMonitoringError("未能加载任何监控数据。");
-            return;
-        }
-
+        if (!hasNasHistory && !hasMonitors) { showMonitoringError("未能加载任何监控数据。"); return; }
         if (hasNasHistory) {
             const nasSection = document.createElement('div');
             nasSection.className = 'nas-section';
-            nasSection.innerHTML = `
-                <h2 class="section-title"><i class="fas fa-server"></i><span>NAS 历史趋势 (7天)</span></h2>
-                <div class="charts-grid">
-                    <div class="chart-container"><div class="chart-header"><h3 class="chart-title">CPU 使用率</h3></div><div class="nas-chart-wrapper"><canvas id="nasCpuHistoryChart"></canvas></div></div>
-                    <div class="chart-container"><div class="chart-header"><h3 class="chart-title">网络总流量</h3></div><div class="nas-chart-wrapper"><canvas id="nasNetworkHistoryChart"></canvas></div></div>
-                    <div class="chart-container" id="nas-temp-history-chart-container" style="display: none;"><div class="chart-header"><h3 class="chart-title">温度变化</h3></div><div class="nas-chart-wrapper"><canvas id="nasTempHistoryChart"></canvas></div></div>
-                </div>`;
+            nasSection.innerHTML = `<h2 class="section-title"><i class="fas fa-server"></i><span>NAS 历史趋势 (7天)</span></h2><div class="charts-grid"><div class="chart-container"><div class="chart-header"><h3 class="chart-title">CPU 使用率</h3></div><div class="nas-chart-wrapper"><canvas id="nasCpuHistoryChart"></canvas></div></div><div class="chart-container"><div class="chart-header"><h3 class="chart-title">网络总流量</h3></div><div class="nas-chart-wrapper"><canvas id="nasNetworkHistoryChart"></canvas></div></div><div class="chart-container" id="nas-temp-history-chart-container" style="display: none;"><div class="chart-header"><h3 class="chart-title">温度变化</h3></div><div class="nas-chart-wrapper"><canvas id="nasTempHistoryChart"></canvas></div></div></div>`;
             container.appendChild(nasSection);
             renderNasHistoryCharts(data.nas_history);
         }
-
         if (hasMonitors) {
             const monitors = data.monitors;
             monitorDataCache = monitors;
@@ -175,23 +133,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 const status = STATUS_MAP[monitor.status] || { text: '未知', class: 'status-warning', icon: 'fa-question-circle' };
                 return `<div class="service-card" id="monitor-card-${monitor.id}"> <div class="service-card-header" onclick="toggleDetailChart(${monitor.id})"> <div class="service-header"> <div class="service-name">${monitor.friendly_name} <i class="fas fa-chevron-down"></i></div> <div class="service-status ${status.class}"><i class="fas ${status.icon}"></i> ${status.text}</div> </div> </div> <div class="service-details"> <div class="service-details-content"> <div class="detail-chart-container"><canvas id="detail-chart-${monitor.id}"></canvas></div> </div> </div> </div>`;
             }).join('');
-            
             const uptimeContainer = document.createElement('div');
             uptimeContainer.id = 'uptime-robot-container';
-            uptimeContainer.innerHTML = `
-                <h2 class="section-title"><i class="fas fa-network-wired"></i><span>网站服务监控 (UptimeRobot)</span></h2>
-                <div class="charts-grid">
-                    <div class="summary-card uptime"><div class="card-icon"><i class="fas fa-chart-line"></i></div><div class="card-title">平均正常率 (7天)</div><div class="card-value">${monitors.length > 0 ? (totalUptime / monitors.length).toFixed(2) : '0'}%</div></div>
-                    <div class="chart-container"><div class="chart-header"><h3 class="chart-title">平均响应时间 (24小时)</h3></div><div class="chart-wrapper"><canvas id="responseTimeChart"></canvas></div></div>
-                </div>
-                <div class="services-grid" style="margin-top: 30px;">
-                    <div id="services-list">${servicesHTML}</div>
-                </div>`;
+            uptimeContainer.innerHTML = `<h2 class="section-title"><i class="fas fa-network-wired"></i><span>网站服务监控 (UptimeRobot)</span></h2><div class="charts-grid"><div class="summary-card uptime"><div class="card-icon"><i class="fas fa-chart-line"></i></div><div class="card-title">平均正常率 (7天)</div><div class="card-value">${monitors.length > 0 ? (totalUptime / monitors.length).toFixed(2) : '0'}%</div></div><div class="chart-container"><div class="chart-header"><h3 class="chart-title">平均响应时间 (24小时)</h3></div><div class="chart-wrapper"><canvas id="responseTimeChart"></canvas></div></div></div><div class="services-grid" style="margin-top: 30px;"><div id="services-list">${servicesHTML}</div></div>`;
             container.appendChild(uptimeContainer);
             renderOverviewCharts(monitors);
         }
     }
-    
     function renderNasHistoryCharts(history) {
         if (nasCpuHistoryChart) nasCpuHistoryChart.destroy();
         if (nasNetworkHistoryChart) nasNetworkHistoryChart.destroy();
@@ -313,6 +261,7 @@ document.addEventListener('DOMContentLoaded', function() {
             'https://nas-api.111312.xyz/metrics',
             'https://wkyapi.111312.xyz/metrics'
         ];
+
         let nasInstances = {};
         let nasUrlList = [];
         let updateInterval;
@@ -341,7 +290,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const m = Math.floor(seconds % 3600 / 60);
             return `${d}天 ${h}小时 ${m}分钟`;
         }
-
         function parseNasRealtimeMetrics(text) {
             const metrics = { cpu: { total: 0, idle: 0 }, memory: { total: 0, available: 0 }, network: { received: 0, transmitted: 0 }, bootTime: 0, temp: null, filesystems: {} };
             const ignoredInterfaces = /^(lo|veth|docker0|tailscale0)/;
@@ -402,23 +350,20 @@ document.addEventListener('DOMContentLoaded', function() {
             const storedUrls = localStorage.getItem('nasUrlList');
             if (storedUrls) {
                 try {
-                    let parsed = JSON.parse(storedUrls);
-                    if (Array.isArray(parsed)) {
-                        parsed = parsed.filter(url => typeof url === 'string' && url.trim() !== '');
-                        if (parsed.length > 0) return parsed;
-                    }
+                    const parsed = JSON.parse(storedUrls);
+                    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_NAS_URLS;
                 } catch (e) {
-                    console.error("Failed to parse nasUrlList from Local Storage, resetting to default.", e);
+                    return DEFAULT_NAS_URLS;
                 }
+            } else {
+                localStorage.setItem('nasUrlList', JSON.stringify(DEFAULT_NAS_URLS));
+                return DEFAULT_NAS_URLS;
             }
-            localStorage.setItem('nasUrlList', JSON.stringify(DEFAULT_NAS_URLS));
-            return DEFAULT_NAS_URLS;
         }
         function saveUrlsToStorage(urls) {
             localStorage.setItem('nasUrlList', JSON.stringify(urls));
         }
         function createNasCardHtml(url, index) {
-            if (!url) return '';
             const urlHostname = new URL(url).hostname;
             return `<div class="nas-card-container" data-url="${url}"> <div style="font-weight: bold; color: var(--primary-dark); margin-bottom: 15px; text-align: center;">${urlHostname}</div> <div class="nas-card-grid"> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-microchip"></i></div><div class="nas-metric-details"><span class="nas-metric-label">CPU</span><div class="nas-metric-value" id="nas-cpu-usage-${index}">--%</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-memory"></i></div><div class="nas-metric-details"><span class="nas-metric-label">内存</span><div class="nas-metric-value" id="nas-mem-usage-${index}">--%</div><div class="nas-metric-subvalue" id="nas-mem-details-${index}">--/--GB</div></div></div> <div class="nas-metric-card" id="nas-temp-card-${index}" style="display: none;"><div class="nas-metric-icon"><i class="fas fa-thermometer-half"></i></div><div class="nas-metric-details"><span class="nas-metric-label">温度</span><div class="nas-metric-value" id="nas-temp-value-${index}">--°C</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-exchange-alt"></i></div><div class="nas-metric-details"><span class="nas-metric-label">上传/下载</span><div class="nas-metric-value small-font" id="nas-net-speed-${index}">-- / --</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-hdd"></i></div><div class="nas-metric-details"><span class="nas-metric-label">系统存储</span><div class="nas-metric-value" id="nas-disk-usage-${index}">--%</div><div class="nas-metric-subvalue" id="nas-disk-details-${index}">--/--GB</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-history"></i></div><div class="nas-metric-details"><span class="nas-metric-label">运行时间</span><div class="nas-metric-value small-font" id="nas-system-uptime-${index}">--</div><div class="nas-metric-subvalue" id="nas-boot-time-${index}">--</div></div></div> </div> <div id="nas-status-footer-${index}" class="nas-status-footer"><span id="nas-status-text-${index}">正在连接...</span><span id="nas-error-text-${index}" class="nas-error"></span></div> </div>`;
         }
@@ -432,6 +377,13 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!listContainer) return;
             listContainer.innerHTML = nasUrlList.map((url, index) => `<div class="nas-url-item"> <span>${url}</span> <button data-index="${index}" class="delete-nas-button">删除</button> </div>`).join('');
         }
+        
+        function updatePageTitle() {
+            const upSpeed = nas_formatSpeed(totalSpeeds.up, 1);
+            const downSpeed = nas_formatSpeed(totalSpeeds.down, 1);
+            document.title = `↑${upSpeed} / ↓${downSpeed} | ${originalTitle}`;
+        }
+
         async function updateSingleNasDisplay(url, index) {
             const errorText = document.getElementById(`nas-error-text-${index}`);
             try {
@@ -442,10 +394,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 const now = Date.now();
                 const instance = nasInstances[url] || {};
                 const currentMetrics = parseNasRealtimeMetrics(text);
+                
                 const updateElement = (id, content) => {
                     const el = document.getElementById(id);
                     if (el) el.innerHTML = content;
                 };
+
                 if (instance.previousCpuData) {
                     const totalDiff = currentMetrics.cpu.total - instance.previousCpuData.total;
                     const idleDiff = currentMetrics.cpu.idle - instance.previousCpuData.idle;
@@ -454,11 +408,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 const memUsed = currentMetrics.memory.total - currentMetrics.memory.available;
                 updateElement(`nas-mem-usage-${index}`, `${(100 * memUsed / currentMetrics.memory.total).toFixed(1)}%`);
                 updateElement(`nas-mem-details-${index}`, `${nas_formatBytes(memUsed, 2)}/${nas_formatBytes(currentMetrics.memory.total, 2)}`);
+                
                 const tempCard = document.getElementById(`nas-temp-card-${index}`);
                 if (currentMetrics.temp !== null) {
                     if(tempCard) tempCard.style.display = 'flex';
                     updateElement(`nas-temp-value-${index}`, `${currentMetrics.temp.toFixed(1)}°C`);
                 }
+                
                 let upSpeed = 0, downSpeed = 0;
                 if (instance.previousNetData && instance.lastFetchTime) {
                     const timeDelta = (now - instance.lastFetchTime) / 1000;
@@ -469,6 +425,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
                 nasInstances[url] = { ...nasInstances[url], upSpeed: upSpeed, downSpeed: downSpeed };
+
                 const diskData = currentMetrics.filesystems['/etc/hostname'];
                 if (diskData && diskData.size > 0) {
                     const diskUsed = diskData.size - diskData.avail;
@@ -505,6 +462,15 @@ document.addEventListener('DOMContentLoaded', function() {
             const updateAll = async () => {
                 const updatePromises = nasUrlList.map((url, index) => updateSingleNasDisplay(url, index));
                 await Promise.all(updatePromises);
+                
+                totalSpeeds = { up: 0, down: 0 };
+                for (const url in nasInstances) {
+                    if (nasUrlList.includes(url)) {
+                        totalSpeeds.up += nasInstances[url].upSpeed || 0;
+                        totalSpeeds.down += nasInstances[url].downSpeed || 0;
+                    }
+                }
+                updatePageTitle();
             };
             updateAll();
             updateInterval = setInterval(updateAll, 10000);
