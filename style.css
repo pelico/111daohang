@@ -40,10 +40,11 @@ body { background: var(--background); min-height: 100vh; padding: 20px; color: v
 .tab-button.active { background: var(--card-bg); color: var(--primary-color); }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
-.tab-content.iframe-tab { display: none; background: var(--card-bg); border-radius: 16px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15); overflow: hidden; }
-.tab-content.iframe-tab.active { display: flex; flex-direction: column; min-height: 600px; }
-.embedded-iframe { width: 100%; flex: 1; border: none; min-height: 600px; }
-.iframe-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; color: var(--text-light); }
+.tab-content.iframe-tab { display: none; background: var(--card-bg); border-radius: 16px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15); overflow: hidden; position: relative; }
+.tab-content.iframe-tab.active { display: block; min-height: 600px; }
+.embedded-iframe { width: 100%; display: block; border: none; min-height: 600px; height: 80vh; background: transparent; }
+.iframe-loading { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; color: var(--text-light); background: var(--card-bg); border-radius: 16px; }
+.iframe-loading.hidden { display: none; }
 .iframe-loading p { margin-top: 15px; font-size: 1rem; }
 
 /* --- 内容通用样式 --- */

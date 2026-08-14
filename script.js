@@ -150,12 +150,16 @@ document.addEventListener('DOMContentLoaded', function() {
         const loading = document.getElementById(loadingId);
         if (!iframe || !loading) return;
         const src = iframeTabSources[tabId];
-        iframe.addEventListener('load', function onLoad() {
-            iframe.removeEventListener('load', onLoad);
-            loading.style.display = 'none';
-            iframe.style.display = 'block';
+        let done = false;
+        const reveal = () => {
+            if (done) return;
+            done = true;
+            loading.classList.add('hidden');
             iframeTabsLoaded[tabId] = true;
-        });
+        };
+        iframe.addEventListener('load', reveal);
+        iframe.addEventListener('error', reveal);
+        setTimeout(reveal, 15000);
         iframe.src = src;
     }
 
