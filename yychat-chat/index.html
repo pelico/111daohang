@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>即时聊天室</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --panel-2: #334155;
+    --accent: #6366f1;
+    --accent-2: #8b5cf6;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --me: #4f46e5;
+    --other: #334155;
+    --ok: #22c55e;
+    --err: #ef4444;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+    color: var(--text);
+    overflow: hidden;
+  }
+
+  #gate {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .card {
+    width: 100%; max-width: 420px; background: rgba(30, 41, 59, .85);
+    backdrop-filter: blur(12px); border: 1px solid rgba(148,163,184,.15);
+    border-radius: 20px; padding: 32px 26px; box-shadow: 0 20px 60px rgba(0,0,0,.4);
+  }
+  .card h1 { margin: 0 0 6px; font-size: 24px; text-align: center;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .card p.sub { text-align: center; color: var(--muted); font-size: 13px; margin: 0 0 24px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .field input {
+    width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(148,163,184,.2);
+    background: rgba(15,23,42,.6); color: var(--text); font-size: 15px; outline: none; transition: border-color .2s;
+  }
+  .field input:focus { border-color: var(--accent); }
+  .btn {
+    width: 100%; padding: 13px; border: none; border-radius: 12px; cursor: pointer; font-size: 15px; font-weight: 600;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #fff; transition: transform .1s, opacity .2s;
+  }
+  .btn:active { transform: scale(.98); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .hint { font-size: 11px; color: var(--muted); text-align: center; margin-top: 14px; line-height: 1.6; }
+
+  #app { display: none; flex-direction: row; height: 100%; }
+  #app.show { display: flex; }
+
+  #sidebar {
+    width: 76px; flex-shrink: 0; background: rgba(15,23,42,.95);
+    border-right: 1px solid rgba(148,163,184,.12); display: flex; flex-direction: column;
+    align-items: center; padding: 14px 0 10px; gap: 6px; z-index: 5;
+  }
+  .nav-btn {
+    width: 58px; height: 58px; border-radius: 14px; border: none; cursor: pointer;
+    background: transparent; color: var(--muted); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 2px; transition: all .2s;
+  }
+  .nav-btn .nav-icon { font-size: 22px; line-height: 1; }
+  .nav-btn .nav-label { font-size: 10px; line-height: 1; }
+  .nav-btn.active { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; }
+  .nav-btn:active { transform: scale(.92); }
+  .sidebar-spacer { flex: 1; }
+
+  #chat-view { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+  header {
+    display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+    background: rgba(30,41,59,.7); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(148,163,184,.12);
+  }
+  header .room-info { flex: 1; min-width: 0; }
+  header .room-name { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header .room-meta { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dot.off { background: var(--err); }
+  .icon-btn {
+    width: 36px; height: 36px; border-radius: 10px; border: 1px solid rgba(148,163,184,.2);
+    background: rgba(15,23,42,.5); color: var(--text); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;
+  }
+  .icon-btn:active { transform: scale(.92); }
+
+  #messages {
+    flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px;
+    overscroll-behavior: contain;
+  }
+  .msg { display: flex; flex-direction: column; max-width: 80%; animation: pop .18s ease; }
+  @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .msg.me { align-self: flex-end; align-items: flex-end; }
+  .msg.other { align-self: flex-start; align-items: flex-start; }
+  .msg .who { font-size: 11px; color: var(--muted); margin: 0 4px 4px; }
+  .msg .bubble {
+    padding: 9px 13px; border-radius: 16px; font-size: 15px; line-height: 1.45; word-break: break-word;
+    white-space: pre-wrap; box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }
+  .msg.me .bubble { background: var(--me); border-bottom-right-radius: 4px; color: #fff; }
+  .msg.other .bubble { background: var(--other); border-bottom-left-radius: 4px; }
+  .msg .time { font-size: 10px; color: var(--muted); margin: 4px 4px 0; display: flex; align-items: center; gap: 4px; }
+  .msg .ding-icon {
+    display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px;
+    border-radius: 50%; font-size: 9px; line-height: 1; cursor: help; transition: all .2s;
+    flex-shrink: 0;
+  }
+  .msg .ding-icon.pending { background: rgba(148,163,184,.3); color: #94a3b8; }
+  .msg .ding-icon.success { background: rgba(34,197,94,.25); color: #22c55e; }
+  .msg .ding-icon.error { background: rgba(239,68,68,.25); color: #ef4444; }
+  .msg .ding-icon.error:hover { background: rgba(239,68,68,.4); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .msg .ding-icon.pending::before { animation: spin 1s linear infinite; }
+
+  .msg.emoji-only .bubble { background: transparent !important; box-shadow: none; padding: 0; font-size: 180px; line-height: 1.15; }
+  .msg.me.emoji-only { align-items: flex-end; }
+  .bubble .big-emoji { font-size: 96px; vertical-align: middle; }
+
+  .msg .bubble img { max-width: 220px; max-height: 240px; border-radius: 10px; display: block; }
+
+  .fly-emoji {
+    position: fixed; top: 0; left: 0; z-index: 100; pointer-events: none;
+    will-change: transform, opacity; user-select: none; line-height: 1; white-space: nowrap;
+  }
+  .msg.emoji-only .bubble.pop-in { animation: bubblePop .4s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes bubblePop {
+    0% { transform: scale(0.2); opacity: 0; }
+    55% { transform: scale(1.18); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .sys {
+    align-self: center; font-size: 12px; color: var(--muted); background: rgba(148,163,184,.1);
+    padding: 4px 12px; border-radius: 12px; margin: 4px 0;
+  }
+
+  #composer {
+    display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px;
+    background: rgba(30,41,59,.7); backdrop-filter: blur(10px); border-top: 1px solid rgba(148,163,184,.12);
+    position: relative;
+  }
+  #emoji-btn { flex-shrink: 0; }
+  #text {
+    flex: 1; resize: none; max-height: 120px; min-height: 40px; padding: 10px 14px; border-radius: 20px;
+    border: 1px solid rgba(148,163,184,.2); background: rgba(15,23,42,.6); color: var(--text);
+    font-size: 15px; outline: none; line-height: 1.4; font-family: inherit;
+  }
+  #send {
+    flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; border: none; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #send:active { transform: scale(.9); }
+  #send:disabled { opacity: .4; }
+
+  #emoji-panel {
+    display: none; position: absolute; bottom: 100%; left: 12px; right: 12px; max-height: 240px;
+    background: var(--panel); border: 1px solid rgba(148,163,184,.2); border-radius: 14px;
+    padding: 8px; overflow-y: auto; box-shadow: 0 -10px 30px rgba(0,0,0,.4); z-index: 10;
+  }
+  #emoji-panel.show { display: block; }
+  .emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 2px; }
+  .emoji-grid button {
+    background: none; border: none; cursor: pointer; font-size: 26px; padding: 6px; border-radius: 8px;
+    transition: background .15s;
+  }
+  .emoji-grid button:hover { background: rgba(148,163,184,.15); }
+  .emoji-cat { font-size: 11px; color: var(--muted); padding: 6px 4px 2px; }
+
+  #board {
+    display: none; position: fixed; inset: 0; z-index: 50;
+    background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+    align-items: center; justify-content: center; padding: 12px; flex-direction: column;
+  }
+  #board.show { display: flex; }
+  .board-bar {
+    width: 100%; max-width: 460px; background: var(--panel); border: 1px solid rgba(148,163,184,.2);
+    border-radius: 14px; padding: 10px; margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  }
+  .board-group { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+  .board-label { font-size: 11px; color: var(--muted); margin-right: 2px; }
+  .swatch {
+    width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); cursor: pointer;
+    transition: transform .1s; flex-shrink: 0;
+  }
+  .swatch:active { transform: scale(.85); }
+  .swatch.active { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+  .size-btn, .tool-btn {
+    width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(148,163,184,.25);
+    background: rgba(15,23,42,.5); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+  }
+  .size-btn.active, .tool-btn.active { background: var(--accent); border-color: var(--accent); }
+  .size-btn .dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: none; border: none; }
+  .board-spacer { flex: 1; }
+  .board-btn {
+    padding: 8px 12px; border-radius: 10px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; flex-shrink: 0;
+  }
+  .board-btn.send { background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #fff; }
+  .board-btn.ghost { background: rgba(148,163,184,.15); color: var(--text); }
+  #board-canvas {
+    background: #fff; border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.5);
+    touch-action: none; max-width: 100%; max-height: 70vh;
+  }
+  #board-emoji-bar {
+    display: none; width: 100%; max-width: 460px; max-height: 88px; overflow-x: auto; overflow-y: hidden;
+    background: var(--panel); border: 1px solid rgba(148,163,184,.2); border-radius: 12px;
+    padding: 6px 8px; margin-bottom: 10px; white-space: nowrap;
+  }
+  #board-emoji-bar.show { display: block; }
+  #board-emoji-bar .be-btn {
+    background: none; border: none; cursor: pointer; font-size: 26px; padding: 4px 6px; border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center; transition: background .15s;
+  }
+  #board-emoji-bar .be-btn:hover { background: rgba(148,163,184,.2); }
+  #board-emoji-bar .be-btn.active { background: var(--accent); }
+
+  #messages::-webkit-scrollbar, #emoji-panel::-webkit-scrollbar, #board-emoji-bar::-webkit-scrollbar { width: 6px; height: 6px; }
+  #messages::-webkit-scrollbar-thumb, #emoji-panel::-webkit-scrollbar-thumb, #board-emoji-bar::-webkit-scrollbar-thumb { background: rgba(148,163,184,.3); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="card">
+    <h1>即时聊天室</h1>
+    <p class="sub">实时同步 · 多人在线 · 大表情</p>
+    <div class="field">
+      <label>你的昵称</label>
+      <input id="nick-input" maxlength="16" placeholder="取个名字吧" />
+    </div>
+    <div class="field">
+      <label>房间名</label>
+      <input id="room-input" maxlength="32" placeholder="输入相同房间名即可互通" value="悠悠的聊天室" />
+    </div>
+    <button class="btn" id="enter-btn">进入聊天</button>
+    <p class="hint">基于公共 MQTT 通道，请勿发送敏感信息。<br/>不同设备访问同一房间名即可实时通信。</p>
+  </div>
+</div>
+
+<div id="app">
+  <nav id="sidebar">
+    <button class="nav-btn active" data-view="chat" title="聊天室">
+      <span class="nav-icon">💬</span><span class="nav-label">聊天</span>
+    </button>
+    <div class="sidebar-spacer"></div>
+    <button class="nav-btn" id="leave-btn" title="离开">
+      <span class="nav-icon">✕</span><span class="nav-label">离开</span>
+    </button>
+  </nav>
+
+  <div id="chat-view">
+    <header>
+      <div class="room-info">
+        <div class="room-name" id="room-name">lobby</div>
+        <div class="room-meta"><span class="dot" id="status-dot"></span><span id="status-text">连接中…</span></div>
+      </div>
+    </header>
+
+    <div id="messages"></div>
+
+    <div id="composer">
+      <div id="emoji-panel">
+        <div id="emoji-content"></div>
+      </div>
+      <button class="icon-btn" id="emoji-btn" title="表情">😀</button>
+      <button class="icon-btn" id="board-btn" title="画板">🎨</button>
+      <textarea id="text" rows="1" placeholder="发条消息…"></textarea>
+      <button id="send" title="发送">➤</button>
+    </div>
+  </div>
+</div>
+
+<div id="board">
+  <div class="board-bar">
+    <div class="board-group" id="board-colors">
+      <span class="board-label">颜色</span>
+      <span class="swatch active" data-color="#000000" style="background:#000"></span>
+      <span class="swatch" data-color="#ef4444" style="background:#ef4444"></span>
+      <span class="swatch" data-color="#f97316" style="background:#f97316"></span>
+      <span class="swatch" data-color="#eab308" style="background:#eab308"></span>
+      <span class="swatch" data-color="#22c55e" style="background:#22c55e"></span>
+      <span class="swatch" data-color="#06b6d4" style="background:#06b6d4"></span>
+      <span class="swatch" data-color="#3b82f6" style="background:#3b82f6"></span>
+      <span class="swatch" data-color="#a855f7" style="background:#a855f7"></span>
+      <span class="swatch" data-color="#ec4899" style="background:#ec4899"></span>
+    </div>
+    <div class="board-group" id="board-sizes">
+      <span class="board-label">粗细</span>
+      <button class="size-btn active" data-size="4" title="细"><span class="dot" style="width:6px;height:6px"></span></button>
+      <button class="size-btn" data-size="8" title="中"><span class="dot" style="width:10px;height:10px"></span></button>
+      <button class="size-btn" data-size="14" title="粗"><span class="dot" style="width:16px;height:16px"></span></button>
+    </div>
+    <div class="board-group" id="board-tools">
+      <span class="board-label">形状</span>
+      <button class="tool-btn active" data-tool="pen" title="自由画">✏️</button>
+      <button class="tool-btn" data-tool="line" title="直线">／</button>
+      <button class="tool-btn" data-tool="rect" title="矩形">▭</button>
+      <button class="tool-btn" data-tool="circle" title="圆形">○</button>
+      <button class="tool-btn" data-tool="eraser" title="橡皮">🧽</button>
+      <button class="tool-btn" data-tool="emoji" title="放表情">😀</button>
+    </div>
+    <div class="board-spacer"></div>
+    <button class="board-btn ghost" id="board-undo">撤销</button>
+    <button class="board-btn ghost" id="board-clear">清空</button>
+    <button class="board-btn send" id="board-send">发送</button>
+    <button class="board-btn ghost" id="board-close">✕</button>
+  </div>
+  <div id="board-emoji-bar"></div>
+  <canvas id="board-canvas" width="400" height="400"></canvas>
+</div>
+
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var BROKER_URL = "wss://broker.emqx.io:8084/mqtt";
+  var TOPIC_PREFIX = "trae-chat-v1/";
+
+  var EMOJI = {
+    "表情": "😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 🙃 😉 😌 😍 🥰 😘 😗 😋 😛 😜 🤪 😝 🤗 🤭 🤫 🤔 🤐 😐 😑 😶 😏 😒 🙄 😬 😔 😪 🤤 😴 😷 🤒 🤕 🤢 🤮 🥵 🥶 😎 🤓 🧐 😕 😟 🙁 😮 😯 😲 😳 🥺 😢 😭 😱 😨 😰 😡 😠 🤬 😈 👿 💀 💩 🤡 👻 👽 🤖".split(" "),
+    "手势": "👍 👎 👊 ✊ 🤛 🤜 👏 🙌 👐 🤲 🙏 🤝 💪 👋 🤚 🖐 ✋ 🖖 👌 🤌 🤏 ✌️ 🤞 🤟 🤘 👈 👉 👆 👇 ☝️ ✍️".split(" "),
+    "心情": "❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 ❣️ 💕 💞 💓 💗 💖 💘 💝 💟 💯 🔥 ⭐ 🌟 ✨ ⚡ 💥 💢 💧 💦".split(" "),
+    "动物": "🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🐔 🐧 🐦 🦄 🐝 🦋 🐌 🐞 🐢 🐙 🦕 🦖 🐬 🐳 🐋".split(" "),
+    "食物": "🍎 🍊 🍋 🍌 🍉 🍇 🍓 🫐 🍈 🍒 🍑 🥭 🍍 🥥 🥝 🍅 🥑 🍆 🥔 🥕 🌽 🌶 🥦 🍞 🧀 🥚 🍳 🥞 🍔 🍟 🍕 🌭 🍣 🍦 🍰 🍩 🍪 ☕ 🍺 🍷".split(" "),
+    "活动": "⚽ 🏀 🏈 ⚾ 🎾 🏐 🏉 🎱 🏓 🏸 🥅 🏒 🏑 🥍 🏏 ⛳ 🎯 🎮 🕹 🎲 🎰 🎳 🎪 🎭 🎨 🎬 🎤 🎧 🎼 🎹 🥁 🎸 🎻 🏆 🥇 🎉 🎊 🎈 🎁".split(" "),
+    "旅行": "🚗 🚕 🚙 🚌 🏎 🚓 🚑 🚒 🚚 🚲 🛵 🏍 ✈️ 🚀 🛸 🚁 ⛵ 🚤 🛳 ⛴ 🚂 🚆 🚊 🚉 🗼 🗽 🗿 🏰 🏯 🎡 🎢 🏖 🏔 🌋 🏕 🌅 🌄 🌠".split(" "),
+    "物品": "💎 🔑 🔒 🔓 🛒 💰 💴 💵 💶 💷 💸 💳 🧲 🔫 💣 🧨 🪓 🔪 🗡 ⚔️ 🛡 🚬 ⛓ 🧷 🧹 🧺 🧻 📱 💻 ⌨️ 🖥 🖨 📷 🎥 📺 📡 ⏰ ⏳".split(" ")
+  };
+
+  var client = null;
+  var nick = "";
+  var room = "";
+  var topic = "";
+  var connected = false;
+  var autoScroll = true;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var gate = $("gate"), app = $("app");
+  var nickInput = $("nick-input"), roomInput = $("room-input"), enterBtn = $("enter-btn");
+  var roomName = $("room-name"), statusDot = $("status-dot"), statusText = $("status-text");
+  var leaveBtn = $("leave-btn");
+  var messagesEl = $("messages");
+  var textEl = $("text"), sendBtn = $("send");
+  var emojiBtn = $("emoji-btn"), emojiPanel = $("emoji-panel"), emojiContent = $("emoji-content");
+  var chatView = $("chat-view");
+  var mqttLib = (typeof mqtt !== "undefined") ? mqtt : (window.mqtt || null);
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function nowTime() {
+    var d = new Date();
+    function p(n) { return n < 10 ? "0" + n : n; }
+    return p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+  function isEmojiOnly(str) {
+    var s = str.replace(/\s/g, "");
+    if (!s) return false;
+    var re = /^(\p{Extended_Pictographic}|\p{Emoji_Component}|\u200d|\ufe0f)+$/u;
+    return re.test(s);
+  }
+  function renderEmoji(text) {
+    var re = /(\p{Extended_Pictographic}(\p{Emoji_Component}|\u200d|\ufe0f)*)/gu;
+    return esc(text).replace(re, '<span class="big-emoji">$1</span>');
+  }
+
+  try {
+    var savedNick = localStorage.getItem("yychat_nick");
+    if (savedNick) nickInput.value = savedNick;
+  } catch (e) {}
+  enterBtn.addEventListener("click", enter);
+  [nickInput, roomInput].forEach(function (el) {
+    el.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) enter(); });
+  });
+  function enter() {
+    nick = nickInput.value.trim() || "匿名";
+    room = roomInput.value.trim() || "悠悠的聊天室";
+    try { localStorage.setItem("yychat_nick", nick); } catch (e) {}
+    var safeRoom = room.replace(/[^a-zA-Z0-9_\-]/g, "-").slice(0, 32) || "lobby";
+    topic = TOPIC_PREFIX + safeRoom;
+    roomName.textContent = room;
+    gate.style.display = "none";
+    app.classList.add("show");
+    requestNotifyPerm();
+    connect();
+  }
+
+  var swReg = null;
+  function requestNotifyPerm() {
+    try {
+      if (!("Notification" in window)) return;
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("sw.js").then(function (reg) {
+          swReg = reg;
+          if (Notification.permission === "default") Notification.requestPermission();
+        }).catch(function () {
+          if (Notification.permission === "default") Notification.requestPermission();
+        });
+      } else {
+        if (Notification.permission === "default") Notification.requestPermission();
+      }
+    } catch (e) {}
+  }
+  function notify(title, body) {
+    try {
+      if (!("Notification" in window)) return;
+      if (Notification.permission !== "granted") return;
+      var notInChat = document.hidden;
+      if (!notInChat) return;
+      var opts = { body: body, tag: "yychat-msg", renotify: true, icon: undefined };
+      if (swReg) {
+        swReg.showNotification(title, opts);
+      } else {
+        var n = new Notification(title, opts);
+        n.onclick = function () {
+          try { window.focus(); } catch (e) {}
+          n.close();
+        };
+        setTimeout(function () { try { n.close(); } catch (e) {} }, 4000);
+      }
+    } catch (e) {}
+  }
+
+  var DING_API = "/api/dingtalk";
+
+  function createDingIcon() {
+    var el = document.createElement("span");
+    el.className = "ding-icon pending show";
+    el.textContent = "●";
+    el.title = "推送到钉钉中…";
+    return el;
+  }
+  function setDingStatus(icon, status, msg) {
+    if (!icon) return;
+    icon.classList.remove("pending", "success", "error");
+    if (status === "success") {
+      icon.classList.add("success");
+      icon.textContent = "✓";
+      icon.title = msg || "已推送到钉钉";
+    } else if (status === "error") {
+      icon.classList.add("error");
+      icon.textContent = "✗";
+      icon.title = msg || "推送失败";
+    } else {
+      icon.classList.add("pending");
+      icon.textContent = "●";
+      icon.title = msg || "推送中…";
+    }
+  }
+
+  function pushDing(title, content, dingIcon, msgId) {
+    var tag = msgId || ("t" + Date.now() + "_" + Math.random().toString(36).slice(2, 6));
+    var updateIcon = function (status, msg) {
+      if (dingIcon) setDingStatus(dingIcon, status, msg);
+    };
+    try {
+      var KEY = "yychat.ding.pushed.v1";
+      var pushed = JSON.parse(localStorage.getItem(KEY) || "{}");
+      var now = Date.now();
+      Object.keys(pushed).forEach(function (k) { if (pushed[k] < now) delete pushed[k]; });
+      if (pushed[tag]) { updateIcon("success", "已推（去重）"); return; }
+      pushed[tag] = now + 180000;
+      localStorage.setItem(KEY, JSON.stringify(pushed));
+    } catch (e) {}
+    updateIcon("pending", "推送中…");
+    try {
+      var body = { title: title, content: content || "", tag: tag };
+      fetch(DING_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      }).then(function (resp) { return resp.json(); }).then(function (data) {
+        if (data && data.errcode === 0) {
+          updateIcon("success", data.deduplicated ? "已推（去重）" : "已推送到钉钉");
+        } else {
+          _unpush(tag);
+          updateIcon("error", "钉钉返回错误: " + (data.errmsg || "未知"));
+        }
+      }).catch(function (e) {
+        _unpush(tag);
+        updateIcon("error", "推送失败: " + (e.message || String(e)));
+      });
+    } catch (e) {
+      _unpush(tag);
+      updateIcon("error", "推送异常: " + String(e));
+    }
+  }
+  function _unpush(tag) {
+    try {
+      var KEY = "yychat.ding.pushed.v1";
+      var pushed = JSON.parse(localStorage.getItem(KEY) || "{}");
+      delete pushed[tag];
+      localStorage.setItem(KEY, JSON.stringify(pushed));
+    } catch (e) {}
+  }
+
+  function connect() {
+    if (!mqttLib) {
+      setStatus(false, "MQTT 库加载失败");
+      addSys("MQTT 库加载失败，请检查网络后刷新。");
+      return;
+    }
+    setStatus(false, "连接中…");
+    var clientId = "trae-chat-" + Math.random().toString(36).slice(2, 10);
+    try {
+      client = mqttLib.connect(BROKER_URL, {
+        clientId: clientId,
+        clean: true,
+        reconnectPeriod: 3000,
+        connectTimeout: 8000,
+        keepalive: 30
+      });
+    } catch (e) {
+      setStatus(false, "连接失败");
+      addSys("连接失败：" + esc(e.message || String(e)));
+      return;
+    }
+
+    client.on("connect", function () {
+      connected = true;
+      setStatus(true, "已连接");
+      client.subscribe(topic, { qos: 0 }, function (err) {
+        if (err) { addSys("订阅房间失败"); }
+        else {
+          addSys("已进入房间「" + esc(room) + "」");
+          publish({ type: "sys", text: nick + " 加入了房间", t: Date.now() });
+        }
+      });
+    });
+
+    client.on("reconnect", function () { setStatus(false, "重连中…"); });
+    client.on("close", function () { connected = false; setStatus(false, "已断开"); });
+    client.on("error", function (err) { setStatus(false, "错误"); addSys("连接错误：" + esc(err.message || String(err))); });
+
+    client.on("message", function (t, payload) {
+      try {
+        var msg = JSON.parse(payload.toString());
+        onMessage(msg);
+      } catch (e) {}
+    });
+  }
+
+  function publish(msg) {
+    if (!client || !connected) return;
+    try { client.publish(topic, JSON.stringify(msg), { qos: 0 }); } catch (e) {}
+  }
+
+  function onMessage(msg) {
+    if (!msg || !msg.type) return;
+    if (msg.type === "sys") {
+      addSys(msg.text || "");
+    } else if (msg.type === "chat") {
+      var isSelf = msg.id && lastSentId === msg.id;
+      if (isSelf) lastSentId = null;
+      var fromNick = msg.nick || "匿名";
+      var msgText = msg.text || "";
+      if (!isSelf) {
+        addChat(fromNick, msgText, msg.t || Date.now(), false, null);
+        notify(fromNick + " 来了新消息", msgText);
+      }
+    } else if (msg.type === "image") {
+      var isSelfImg = msg.id && lastSentId === msg.id;
+      if (isSelfImg) lastSentId = null;
+      var imgNick = msg.nick || "匿名";
+      if (!isSelfImg) {
+        addImage(imgNick, msg.data || "", msg.t || Date.now(), false, null);
+        notify(imgNick + " 发来图片", "点击查看");
+      }
+    }
+  }
+
+  var lastSentId = null;
+  function send() {
+    var text = textEl.value;
+    if (!text.trim() || !connected) return;
+    var id = Math.random().toString(36).slice(2, 10);
+    lastSentId = id;
+    var msg = { type: "chat", id: id, nick: nick, text: text, t: Date.now() };
+    publish(msg);
+    var dingIcon = createDingIcon();
+    addChat(nick, text, msg.t, true, dingIcon);
+    pushDing("【悠悠聊天室】" + nick, "[" + room + "] " + nick + ":\n" + text, dingIcon, id);
+    textEl.value = "";
+    autoSize();
+    closeEmoji();
+  }
+  sendBtn.addEventListener("click", send);
+  textEl.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      send();
+    }
+  });
+  textEl.addEventListener("input", autoSize);
+  function autoSize() {
+    textEl.style.height = "auto";
+    textEl.style.height = Math.min(120, textEl.scrollHeight) + "px";
+  }
+
+  var flyingCount = 0;
+  function flyEmoji(bubble, text, isMe) {
+    if (document.hidden) return false;
+    if (flyingCount > 8) return false;
+    var rect = bubble.getBoundingClientRect();
+    if (rect.bottom < -10 || rect.top > window.innerHeight + 10) return false;
+    var endX = rect.left + rect.width / 2;
+    var endY = rect.top + rect.height / 2;
+    var W = window.innerWidth, H = window.innerHeight;
+    var FLY_FS = 96;
+    var startX, startY;
+    if (isMe) { startX = W * 0.85; startY = H + 40; }
+    else { startX = -40; startY = H * (0.1 + Math.random() * 0.4); }
+    var nWay = 5 + Math.floor(Math.random() * 3);
+    var landmarks = [
+      { x: W * 0.1,  y: H * 0.15 },
+      { x: W * 0.9,  y: H * 0.15 },
+      { x: W * 0.1,  y: H * 0.85 },
+      { x: W * 0.9,  y: H * 0.85 },
+      { x: W * 0.5,  y: H * 0.25 },
+      { x: W * 0.5,  y: H * 0.75 },
+      { x: W * 0.3,  y: H * 0.5  },
+      { x: W * 0.7,  y: H * 0.5  }
+    ];
+    var shuffled = landmarks.slice().sort(function () { return Math.random() - 0.5; });
+    var ways = [];
+    for (var i = 0; i < nWay; i++) {
+      var c = shuffled[i];
+      ways.push({
+        x: c.x + (Math.random() * 2 - 1) * W * 0.06,
+        y: c.y + (Math.random() * 2 - 1) * H * 0.06,
+        rot: (Math.random() * 2 - 1) * 720,
+        bounce: 0.55 + Math.random() * 0.85
+      });
+    }
+    var el = document.createElement("div");
+    el.className = "fly-emoji";
+    el.textContent = text;
+    el.style.fontSize = FLY_FS + "px";
+    el.style.opacity = "0";
+    el.style.transform = "translate(-50%,-50%) translate(" + startX + "px," + startY + "px) scale(0.6) rotate(0deg)";
+    document.body.appendChild(el);
+    flyingCount++;
+    var lastWay = ways[ways.length - 1];
+    var side = endX > W / 2 ? 1 : -1;
+    var ctrlX = (lastWay.x + endX) / 2 + side * (100 + Math.random() * 100);
+    var ctrlY = Math.min(lastWay.y, endY) - (80 + Math.random() * 120);
+    var dur = 2200;
+    var t0 = performance.now();
+    var runRatio = 0.82;
+    var finished = false;
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+    function cleanup() {
+      if (finished) return;
+      finished = true;
+      el.remove();
+      flyingCount = Math.max(0, flyingCount - 1);
+      bubble.style.opacity = "";
+      bubble.classList.remove("pop-in");
+      void bubble.offsetWidth;
+      bubble.classList.add("pop-in");
+    }
+    function frame(now) {
+      try {
+        var t = Math.min(1, (now - t0) / dur);
+        var x, y, rot, s;
+        if (t < runRatio) {
+          var segs = ways.length;
+          var tt = Math.min(0.9999, t / runRatio);
+          var seg = tt * segs;
+          var i0 = Math.min(segs - 1, Math.floor(seg));
+          var localT = seg - i0;
+          var eT = easeInOut(localT);
+          var p0 = i0 === 0 ? { x: startX, y: startY, rot: 0, bounce: 1 } : ways[i0 - 1];
+          var p1 = ways[i0];
+          x = lerp(p0.x, p1.x, eT);
+          y = lerp(p0.y, p1.y, eT);
+          rot = lerp(p0.rot, p1.rot, eT);
+          var bounce = lerp(p0.bounce, p1.bounce, eT);
+          s = bounce * (0.7 + Math.sin(localT * Math.PI) * 0.7);
+        } else {
+          var ft = (t - runRatio) / (1 - runRatio);
+          var e = 1 - Math.pow(1 - ft, 3);
+          var u = 1 - e;
+          x = u * u * lastWay.x + 2 * u * e * ctrlX + e * e * endX;
+          y = u * u * lastWay.y + 2 * u * e * ctrlY + e * e * endY;
+          rot = lerp(lastWay.rot, 0, e);
+          s = lastWay.bounce + (1 - lastWay.bounce) * e;
+          if (ft < 0.7) s *= 1 + Math.sin(ft / 0.7 * Math.PI) * 0.2;
+        }
+        el.style.transform = "translate(-50%,-50%) translate(" + x + "px," + y + "px) scale(" + s + ") rotate(" + rot + "deg)";
+        el.style.opacity = t < 0.92 ? 1 : (1 - (t - 0.92) / 0.08);
+        if (t < 1) {
+          requestAnimationFrame(frame);
+        } else {
+          cleanup();
+        }
+      } catch (err) {
+        cleanup();
+      }
+    }
+    setTimeout(function () { if (!finished) cleanup(); }, 3500);
+    requestAnimationFrame(frame);
+    return true;
+  }
+
+  function addChat(who, text, t, isMe, dingIcon) {
+    var wrap = document.createElement("div");
+    wrap.className = "msg " + (isMe ? "me" : "other");
+    var emojiOnly = isEmojiOnly(text);
+    if (emojiOnly) wrap.className += " emoji-only";
+    var whoEl = document.createElement("div");
+    whoEl.className = "who";
+    whoEl.textContent = isMe ? "我" : who;
+    wrap.appendChild(whoEl);
+    var bubble = document.createElement("div");
+    bubble.className = "bubble";
+    if (emojiOnly) {
+      bubble.textContent = text;
+      bubble.style.opacity = "0";
+    } else {
+      bubble.innerHTML = renderEmoji(text);
+    }
+    wrap.appendChild(bubble);
+    var timeEl = document.createElement("div");
+    timeEl.className = "time";
+    timeEl.textContent = nowTime();
+    if (dingIcon) timeEl.appendChild(dingIcon);
+    wrap.appendChild(timeEl);
+    messagesEl.appendChild(wrap);
+    maybeScroll();
+    if (emojiOnly) {
+      requestAnimationFrame(function () {
+        if (!flyEmoji(bubble, text, isMe)) {
+          bubble.style.opacity = "";
+          bubble.classList.remove("pop-in");
+          void bubble.offsetWidth;
+          bubble.classList.add("pop-in");
+        }
+      });
+    }
+    while (messagesEl.children.length > 300) {
+      messagesEl.removeChild(messagesEl.firstChild);
+    }
+  }
+
+  function addImage(who, dataUrl, t, isMe, dingIcon) {
+    var wrap = document.createElement("div");
+    wrap.className = "msg " + (isMe ? "me" : "other");
+    var whoEl = document.createElement("div");
+    whoEl.className = "who";
+    whoEl.textContent = isMe ? "我" : who;
+    wrap.appendChild(whoEl);
+    var bubble = document.createElement("div");
+    bubble.className = "bubble";
+    var img = document.createElement("img");
+    img.src = dataUrl;
+    img.alt = "画板作品";
+    img.addEventListener("load", function () { maybeScroll(); });
+    bubble.appendChild(img);
+    wrap.appendChild(bubble);
+    var timeEl = document.createElement("div");
+    timeEl.className = "time";
+    timeEl.textContent = nowTime();
+    if (dingIcon) timeEl.appendChild(dingIcon);
+    wrap.appendChild(timeEl);
+    messagesEl.appendChild(wrap);
+    maybeScroll();
+    while (messagesEl.children.length > 300) {
+      messagesEl.removeChild(messagesEl.firstChild);
+    }
+  }
+
+  function addSys(text) {
+    var el = document.createElement("div");
+    el.className = "sys";
+    el.textContent = text;
+    messagesEl.appendChild(el);
+    maybeScroll();
+  }
+
+  function maybeScroll() {
+    if (autoScroll) messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+  messagesEl.addEventListener("scroll", function () {
+    var atBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 60;
+    autoScroll = atBottom;
+  });
+
+  function setStatus(on, text) {
+    statusDot.className = "dot " + (on ? "on" : "off");
+    statusText.textContent = text;
+    sendBtn.disabled = !on;
+  }
+
+  leaveBtn.addEventListener("click", function () {
+    if (client && connected) {
+      try {
+        publish({ type: "sys", text: nick + " 离开了房间", t: Date.now() });
+        client.end(true);
+      } catch (e) {}
+    }
+    connected = false;
+    client = null;
+    app.classList.remove("show");
+    gate.style.display = "flex";
+    messagesEl.innerHTML = "";
+    setStatus(false, "未连接");
+  });
+
+  window.addEventListener("beforeunload", function () {
+    if (client && connected) {
+      try { publish({ type: "sys", text: nick + " 离开了房间", t: Date.now() }); client.end(true); } catch (e) {}
+    }
+  });
+
+  function buildEmojiPanel() {
+    var html = "";
+    Object.keys(EMOJI).forEach(function (cat) {
+      html += '<div class="emoji-cat">' + esc(cat) + "</div>";
+      html += '<div class="emoji-grid">';
+      EMOJI[cat].forEach(function (e) {
+        html += '<button type="button" data-e="' + esc(e) + '">' + e + "</button>";
+      });
+      html += "</div>";
+    });
+    emojiContent.innerHTML = html;
+    emojiContent.addEventListener("click", function (ev) {
+      var b = ev.target.closest("button[data-e]");
+      if (!b) return;
+      insertAtCursor(textEl, b.getAttribute("data-e"));
+      textEl.focus();
+      autoSize();
+    });
+  }
+  function insertAtCursor(field, value) {
+    var s = field.selectionStart, e = field.selectionEnd;
+    field.value = field.value.slice(0, s) + value + field.value.slice(e);
+    field.selectionStart = field.selectionEnd = s + value.length;
+  }
+  emojiBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    emojiPanel.classList.toggle("show");
+  });
+  document.addEventListener("click", function (e) {
+    if (!emojiPanel.contains(e.target) && e.target !== emojiBtn) closeEmoji();
+  });
+  function closeEmoji() { emojiPanel.classList.remove("show"); }
+
+  buildEmojiPanel();
+
+  var board = $("board");
+  var boardBtn = $("board-btn");
+  var boardCanvas = $("board-canvas");
+  var bctx = boardCanvas.getContext("2d");
+  var boardHistory = [];
+
+  function clearBoard() {
+    bctx.fillStyle = "#ffffff";
+    bctx.fillRect(0, 0, boardCanvas.width, boardCanvas.height);
+  }
+  clearBoard();
+
+  var drawState = { drawing: false, tool: "pen", color: "#000000", size: 4, startX: 0, startY: 0, snapshot: null, emojiChar: "😀" };
+
+  var boardEmojiBar = $("board-emoji-bar");
+  var boardEmojiChars = EMOJI["表情"].concat(EMOJI["手势"], EMOJI["心情"]);
+  boardEmojiChars.forEach(function (ch, i) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "be-btn" + (i === 0 ? " active" : "");
+    btn.textContent = ch;
+    btn.addEventListener("click", function () {
+      drawState.emojiChar = ch;
+      Array.prototype.forEach.call(boardEmojiBar.querySelectorAll(".be-btn"), function (x) { x.classList.remove("active"); });
+      btn.classList.add("active");
+      Array.prototype.forEach.call($("board-tools").querySelectorAll(".tool-btn"), function (x) { x.classList.remove("active"); });
+      $("board-tools").querySelector('[data-tool="emoji"]').classList.add("active");
+      drawState.tool = "emoji";
+      boardEmojiBar.classList.add("show");
+    });
+    boardEmojiBar.appendChild(btn);
+  });
+
+  function pushHistory() {
+    try {
+      boardHistory.push(bctx.getImageData(0, 0, boardCanvas.width, boardCanvas.height));
+      if (boardHistory.length > 30) boardHistory.shift();
+    } catch (e) {}
+  }
+  function undoBoard() {
+    if (boardHistory.length === 0) return;
+    bctx.putImageData(boardHistory.pop(), 0, 0);
+  }
+
+  $("board-tools").addEventListener("click", function (e) {
+    var b = e.target.closest(".tool-btn");
+    if (!b) return;
+    Array.prototype.forEach.call($("board-tools").querySelectorAll(".tool-btn"), function (x) { x.classList.remove("active"); });
+    b.classList.add("active");
+    drawState.tool = b.getAttribute("data-tool");
+    if (drawState.tool === "emoji") boardEmojiBar.classList.add("show");
+    else boardEmojiBar.classList.remove("show");
+  });
+  $("board-colors").addEventListener("click", function (e) {
+    var s = e.target.closest(".swatch");
+    if (!s) return;
+    Array.prototype.forEach.call($("board-colors").querySelectorAll(".swatch"), function (x) { x.classList.remove("active"); });
+    s.classList.add("active");
+    drawState.color = s.getAttribute("data-color");
+  });
+  $("board-sizes").addEventListener("click", function (e) {
+    var b = e.target.closest(".size-btn");
+    if (!b) return;
+    Array.prototype.forEach.call($("board-sizes").querySelectorAll(".size-btn"), function (x) { x.classList.remove("active"); });
+    b.classList.add("active");
+    drawState.size = parseInt(b.getAttribute("data-size"), 10) || 4;
+  });
+
+  function getPos(e) {
+    var rect = boardCanvas.getBoundingClientRect();
+    var cx, cy;
+    if (e.touches && e.touches[0]) { cx = e.touches[0].clientX; cy = e.touches[0].clientY; }
+    else { cx = e.clientX; cy = e.clientY; }
+    return { x: (cx - rect.left) * (boardCanvas.width / rect.width), y: (cy - rect.top) * (boardCanvas.height / rect.height) };
+  }
+  function startDraw(e) {
+    e.preventDefault();
+    var p = getPos(e);
+    pushHistory();
+    if (drawState.tool === "emoji") {
+      var sizeMap = { 4: 44, 8: 72, 14: 104 };
+      bctx.font = (sizeMap[drawState.size] || 48) + "px 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif";
+      bctx.textAlign = "center";
+      bctx.textBaseline = "middle";
+      bctx.fillText(drawState.emojiChar || "😀", p.x, p.y);
+      drawState.drawing = false;
+      return;
+    }
+    drawState.drawing = true;
+    drawState.startX = p.x; drawState.startY = p.y;
+    if (drawState.tool === "line" || drawState.tool === "rect" || drawState.tool === "circle") {
+      drawState.snapshot = bctx.getImageData(0, 0, boardCanvas.width, boardCanvas.height);
+    }
+    if (drawState.tool === "pen" || drawState.tool === "eraser") {
+      bctx.beginPath();
+      bctx.moveTo(p.x, p.y);
+    }
+  }
+  function moveDraw(e) {
+    if (!drawState.drawing) return;
+    e.preventDefault();
+    var p = getPos(e);
+    bctx.lineCap = "round"; bctx.lineJoin = "round";
+    bctx.lineWidth = drawState.size;
+    bctx.strokeStyle = drawState.tool === "eraser" ? "#ffffff" : drawState.color;
+    if (drawState.tool === "pen" || drawState.tool === "eraser") {
+      bctx.lineTo(p.x, p.y); bctx.stroke();
+    } else if (drawState.snapshot) {
+      bctx.putImageData(drawState.snapshot, 0, 0);
+      bctx.beginPath();
+      if (drawState.tool === "line") { bctx.moveTo(drawState.startX, drawState.startY); bctx.lineTo(p.x, p.y); bctx.stroke(); }
+      else if (drawState.tool === "rect") { bctx.strokeRect(drawState.startX, drawState.startY, p.x - drawState.startX, p.y - drawState.startY); }
+      else if (drawState.tool === "circle") {
+        var dx = p.x - drawState.startX, dy = p.y - drawState.startY;
+        bctx.arc(drawState.startX, drawState.startY, Math.sqrt(dx * dx + dy * dy), 0, Math.PI * 2);
+        bctx.stroke();
+      }
+    }
+  }
+  function endDraw() { drawState.drawing = false; drawState.snapshot = null; }
+
+  boardCanvas.addEventListener("mousedown", startDraw);
+  boardCanvas.addEventListener("mousemove", moveDraw);
+  window.addEventListener("mouseup", endDraw);
+  boardCanvas.addEventListener("touchstart", startDraw, { passive: false });
+  boardCanvas.addEventListener("touchmove", moveDraw, { passive: false });
+  window.addEventListener("touchend", endDraw);
+
+  $("board-clear").addEventListener("click", function () { pushHistory(); clearBoard(); });
+  $("board-undo").addEventListener("click", undoBoard);
+  $("board-close").addEventListener("click", function () { board.classList.remove("show"); });
+  boardBtn.addEventListener("click", function () { board.classList.add("show"); });
+
+  $("board-send").addEventListener("click", function () {
+    if (!connected) { addSys("未连接，无法发送"); return; }
+    var dataUrl = boardCanvas.toDataURL("image/jpeg", 0.7);
+    if (dataUrl.length > 120000) dataUrl = boardCanvas.toDataURL("image/jpeg", 0.45);
+    var id = Math.random().toString(36).slice(2, 10);
+    lastSentId = id;
+    var msg = { type: "image", id: id, nick: nick, data: dataUrl, t: Date.now() };
+    publish(msg);
+    var dingIcon = createDingIcon();
+    addImage(nick, dataUrl, msg.t, true, dingIcon);
+    pushDing("【悠悠聊天室】" + nick, "[" + room + "] " + nick + " 发来图片（画板作品）", dingIcon, id);
+    board.classList.remove("show");
+    clearBoard();
+    boardHistory.length = 0;
+  });
+
+  nickInput.focus();
+})();
+</script>
+</body>
+</html>
