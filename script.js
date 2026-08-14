@@ -259,7 +259,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function initNasModule() {
         // 每次修改 DEFAULT_NAS_URLS 时，请将 NAS_URLS_VERSION +1
         // 这样用户浏览器会自动检测到更新并合并新的默认 URL
-        const NAS_URLS_VERSION = 1;
+        const NAS_URLS_VERSION = 2;
         const DEFAULT_NAS_URLS = [
             'https://nas-api.111312.xyz/metrics',
             'https://wkyapi.111312.xyz/metrics',
