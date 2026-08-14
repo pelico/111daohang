@@ -257,6 +257,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- 6. NAS 实时动态监控模块 (顶部) ---
     function initNasModule() {
+        // 每次修改 DEFAULT_NAS_URLS 时，请将 NAS_URLS_VERSION +1
+        // 这样用户浏览器会自动检测到更新并合并新的默认 URL
+        const NAS_URLS_VERSION = 1;
         const DEFAULT_NAS_URLS = [
             'https://nas-api.111312.xyz/metrics',
             'https://wkyapi.111312.xyz/metrics',
@@ -349,20 +352,40 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         function getUrlsFromStorage() {
             const storedUrls = localStorage.getItem('nasUrlList');
-            if (storedUrls) {
-                try {
-                    const parsed = JSON.parse(storedUrls);
-                    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_NAS_URLS;
-                } catch (e) {
-                    return DEFAULT_NAS_URLS;
-                }
-            } else {
+            const storedVersion = parseInt(localStorage.getItem('nasUrlsVersion') || '0', 10);
+
+            // 首次使用：直接写入默认值和版本号
+            if (!storedUrls) {
                 localStorage.setItem('nasUrlList', JSON.stringify(DEFAULT_NAS_URLS));
-                return DEFAULT_NAS_URLS;
+                localStorage.setItem('nasUrlsVersion', String(NAS_URLS_VERSION));
+                return DEFAULT_NAS_URLS.slice();
             }
+
+            let parsedUrls;
+            try {
+                const parsed = JSON.parse(storedUrls);
+                parsedUrls = Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_NAS_URLS.slice();
+            } catch (e) {
+                parsedUrls = DEFAULT_NAS_URLS.slice();
+            }
+
+            // 版本号不一致：需要合并更新
+            if (storedVersion !== NAS_URLS_VERSION) {
+                // 找出用户自定义的 URL（存储列表中不在 DEFAULT_NAS_URLS 里的那些）
+                const userCustomUrls = parsedUrls.filter(url => !DEFAULT_NAS_URLS.includes(url));
+                // 合并：新的 DEFAULT_NAS_URLS（代码中最新） + 用户自定义 URL（保留用户手动添加的）
+                const merged = [...DEFAULT_NAS_URLS, ...userCustomUrls];
+                // 写回存储
+                localStorage.setItem('nasUrlList', JSON.stringify(merged));
+                localStorage.setItem('nasUrlsVersion', String(NAS_URLS_VERSION));
+                return merged;
+            }
+
+            return parsedUrls;
         }
         function saveUrlsToStorage(urls) {
             localStorage.setItem('nasUrlList', JSON.stringify(urls));
+            localStorage.setItem('nasUrlsVersion', String(NAS_URLS_VERSION));
         }
         function createNasCardHtml(url, index) {
             const urlHostname = new URL(url).hostname;
