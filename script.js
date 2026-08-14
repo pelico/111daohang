@@ -1,6 +1,75 @@
 document.addEventListener('DOMContentLoaded', function() {
-    
-    const isMobile = window.innerWidth <= 768;
+
+    // ==================== 通用工具函数（P0/P1 优化共用） ====================
+    // P0-2: HTML 转义，防 XSS
+    function escapeHtml(str) {
+        if (str == null) return '';
+        return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // P0-3 & P1-7: 带超时 + 可取消的 fetch
+    function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+        const controller = new AbortController();
+        const abortId = setTimeout(() => controller.abort(), timeoutMs);
+        const signalFromOuter = options.signal;
+        if (signalFromOuter) signalFromOuter.addEventListener('abort', () => controller.abort(), { once: true });
+        return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(abortId));
+    }
+
+    // P1-7: 指数退避重试
+    async function fetchWithRetry(url, options = {}, { timeout = 15000, retries = 3, baseDelay = 500 } = {}) {
+        let lastErr;
+        for (let attempt = 0; attempt <= retries; attempt++) {
+            try {
+                return await fetchWithTimeout(url, options, timeout);
+            } catch (err) {
+                lastErr = err;
+                if (attempt === retries) break;
+                if (err.name === 'AbortError') break; // 手动取消不重试
+                await new Promise(r => setTimeout(r, baseDelay * Math.pow(2, attempt)));
+            }
+        }
+        throw lastErr;
+    }
+
+    // P0-3: Promise.all 并发限流
+    async function promiseAllLimited(items, limit, mapper) {
+        const results = new Array(items.length);
+        let idx = 0;
+        async function worker() {
+            while (idx < items.length) {
+                const cur = idx++;
+                results[cur] = await mapper(items[cur], cur);
+            }
+        }
+        await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+        return results;
+    }
+
+    // P0-1: Chart 实例注册表，集中管理防泄漏
+    const chartRegistry = new Map();
+    function registerChart(id, chart) {
+        destroyChartById(id);
+        chartRegistry.set(id, chart);
+    }
+    function destroyChartById(id) {
+        const old = chartRegistry.get(id);
+        if (old) { try { old.destroy(); } catch (e) {} chartRegistry.delete(id); }
+    }
+    function destroyChartsWithPrefix(prefix) {
+        for (const [id, c] of Array.from(chartRegistry.entries())) {
+            if (id.startsWith(prefix)) destroyChartById(id);
+        }
+    }
+    function destroyAllCharts() {
+        for (const [id, c] of Array.from(chartRegistry.entries())) destroyChartById(id);
+    }
+
+    // ==================== 响应式检测（P2 顺便修一下） ====================
+    let isMobile = window.innerWidth <= 768;
+    const mql = window.matchMedia('(max-width: 768px)');
+    function updateIsMobile() { isMobile = mql.matches; }
+    try { mql.addEventListener('change', updateIsMobile); } catch (e) { try { mql.addListener(updateIsMobile); } catch (e2) {} }
 
     // --- API Endpoints ---
     const NOTIFICATIONS_API = 'https://jy-api.111312.xyz/notifications';
@@ -13,7 +82,12 @@ document.addEventListener('DOMContentLoaded', function() {
     let notificationsLoaded = false;
     let weatherLoaded = false;
     let monitoringLoaded = false;
+    // P1-5: 每个 Tab 上次成功加载时间戳，超时自动补刷
+    const tabLastLoaded = { 'tab-monitoring': 0, 'tab-notifications': 0, 'tab-weather': 0 };
+    const TAB_STALE_MS = 10 * 60 * 1000; // 10 分钟视为过期
     let nasCpuHistoryChart, nasNetworkHistoryChart, nasTempHistoryChart;
+    // P0-3: NAS 轮询 abort 集合
+    let nasFetchAbortController = null;
 
     // --- 1. 基础功能 ---
     function updateTime() {
@@ -27,6 +101,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const sites = document.querySelectorAll('.nav-link');
         const siteCountEl = document.getElementById('site-count');
         if (siteCountEl) siteCountEl.textContent = sites.length;
+        const yearEl = document.getElementById('footer-year');
+        if (yearEl) yearEl.textContent = String(new Date().getFullYear());
     }
 
     // --- 2. 选项卡切换逻辑 ---
@@ -41,9 +117,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 const tabId = button.getAttribute('data-tab');
                 const activeTab = document.getElementById(tabId);
                 if (activeTab) activeTab.classList.add('active');
-                if (tabId === 'tab-monitoring' && !monitoringLoaded) { initMonitoring(); monitoringLoaded = true; }
-                if (tabId === 'tab-notifications' && !notificationsLoaded) { fetchNotifications(); notificationsLoaded = true; }
-                if (tabId === 'tab-weather' && !weatherLoaded) { fetchWeatherData(); weatherLoaded = true; }
+                // P1-5: 首次加载 或 距上次成功加载超过 10 分钟则补刷
+                const now = Date.now();
+                const isStale = now - tabLastLoaded[tabId] > TAB_STALE_MS;
+                if (tabId === 'tab-monitoring' && (!monitoringLoaded || isStale)) {
+                    initMonitoring(); monitoringLoaded = true;
+                }
+                if (tabId === 'tab-notifications' && (!notificationsLoaded || isStale)) {
+                    fetchNotifications(); notificationsLoaded = true;
+                }
+                if (tabId === 'tab-weather' && (!weatherLoaded || isStale)) {
+                    fetchWeatherData(); weatherLoaded = true;
+                }
             });
         });
     }
@@ -51,36 +136,64 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- 3. 我的通知功能 ---
     function showNotificationStatus(message, type = 'info') {
         const statusEl = document.getElementById('notifications-status-message');
-        if (statusEl) {
-            statusEl.innerHTML = `<div class="status-msg ${type}">${message}</div>`;
-            if (type === 'success') { setTimeout(() => { statusEl.innerHTML = ''; }, 5000); }
-        }
+        if (!statusEl) return;
+        statusEl.innerHTML = '';
+        const div = document.createElement('div');
+        div.className = `status-msg ${type}`;
+        div.textContent = message;
+        statusEl.appendChild(div);
+        if (type === 'success') { setTimeout(() => { statusEl.innerHTML = ''; }, 5000); }
     }
     async function fetchNotifications() {
         const listEl = document.getElementById('notifications-list');
         if (!listEl) return;
         listEl.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><div>正在刷新...</div></div>`;
         try {
-            const response = await fetch(NOTIFICATIONS_API);
+            // P1-7: 超时 + 指数退避重试
+            const response = await fetchWithRetry(NOTIFICATIONS_API, {}, { timeout: 15000, retries: 3 });
             if (!response.ok) throw new Error(`HTTP错误! 状态码: ${response.status}`);
             const data = await response.json();
             if (data.success === false) throw new Error(`API返回错误: ${data.error || '未知错误'}`);
+            listEl.innerHTML = '';
             if (data.notifications && data.notifications.length > 0) {
-                listEl.innerHTML = '';
+                const frag = document.createDocumentFragment();
                 data.notifications.forEach(item => {
                     const div = document.createElement('div');
                     div.className = 'notification-item';
+                    const contentEl = document.createElement('span');
+                    contentEl.className = 'notification-content';
+                    // P0-2: 纯文本用 textContent，防 XSS
+                    contentEl.textContent = item.content || '';
                     const date = new Date(item.timestamp);
-                    div.innerHTML = `<span class="notification-content">${item.content}</span><span class="notification-timestamp">${date.toLocaleString('zh-CN', { year: '2-digit', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>`;
-                    listEl.appendChild(div);
+                    const timeEl = document.createElement('span');
+                    timeEl.className = 'notification-timestamp';
+                    timeEl.textContent = date.toLocaleString('zh-CN', { year: '2-digit', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    div.appendChild(contentEl);
+                    div.appendChild(timeEl);
+                    frag.appendChild(div);
                 });
+                listEl.appendChild(frag);
                 showNotificationStatus(`成功加载 ${data.notifications.length} 条通知`, 'success');
+                // P1-5: 记录成功加载时间
+                tabLastLoaded['tab-notifications'] = Date.now();
             } else {
-                listEl.innerHTML = `<div class="empty-state"><p>暂无通知或短信</p></div>`;
+                const empty = document.createElement('div');
+                empty.className = 'empty-state';
+                const p = document.createElement('p');
+                p.textContent = '暂无通知或短信';
+                empty.appendChild(p);
+                listEl.appendChild(empty);
+                tabLastLoaded['tab-notifications'] = Date.now();
             }
         } catch (error) {
             console.error('获取通知失败:', error);
-            listEl.innerHTML = `<div class="error-state"><p>加载失败: ${error.message}</p></div>`;
+            listEl.innerHTML = '';
+            const err = document.createElement('div');
+            err.className = 'error-state';
+            const p = document.createElement('p');
+            p.textContent = `加载失败: ${error.message}`;
+            err.appendChild(p);
+            listEl.appendChild(err);
             showNotificationStatus(`加载失败: ${error.message}`, 'error');
         }
     }
@@ -89,17 +202,28 @@ document.addEventListener('DOMContentLoaded', function() {
     const STATUS_MAP = { 0: { text: '暂停中', class: 'status-warning', icon: 'fa-pause-circle' }, 1: { text: '未检查', class: 'status-warning', icon: 'fa-question-circle' }, 2: { text: '运行中', class: 'status-up', icon: 'fa-check-circle' }, 8: { text: '疑似故障', class: 'status-warning', icon: 'fa-exclamation-circle' }, 9: { text: '服务中断', class: 'status-down', icon: 'fa-times-circle' } };
     function showMonitoringError(message) {
         const container = document.getElementById('tab-monitoring');
-        if (container) container.innerHTML = `<div class="error-state"><h2>加载数据失败</h2><p>${message}</p></div>`;
+        if (!container) return;
+        container.innerHTML = '';
+        const err = document.createElement('div');
+        err.className = 'error-state';
+        const h2 = document.createElement('h2');
+        h2.textContent = '加载数据失败';
+        const p = document.createElement('p');
+        p.textContent = message;
+        err.appendChild(h2); err.appendChild(p);
+        container.appendChild(err);
     }
     async function initMonitoring() {
         const container = document.getElementById('tab-monitoring');
-        if (container) { container.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><p>正在加载服务监控数据...</p></div>`; }
+        if (container) container.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><p>正在加载服务监控数据...</p></div>`;
         try {
-            const response = await fetch(MONITORING_PROXY_API, { method: 'POST', cache: 'no-cache' });
+            // P1-7: 超时 + 指数退避重试
+            const response = await fetchWithRetry(MONITORING_PROXY_API, { method: 'POST', cache: 'no-cache' }, { timeout: 20000, retries: 3 });
             if (!response.ok) throw new Error(`API 请求失败: ${response.status}`);
             const data = await response.json();
             if (data.stat === 'fail') throw new Error(`API 返回错误: ${(data.error || {}).message || '未知'}`);
             renderCombinedMonitoringPage(data);
+            tabLastLoaded['tab-monitoring'] = Date.now();
         } catch (error) {
             console.error('获取监控数据失败:', error);
             showMonitoringError(error.message);
@@ -108,6 +232,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function renderCombinedMonitoringPage(data) {
         const container = document.getElementById('tab-monitoring');
         if (!container) return;
+        // P0-1: 重建 DOM 前，先销毁此 Tab 下所有旧图表实例
+        destroyChartsWithPrefix('mon-');
+        destroyChartsWithPrefix('nas-history-');
         container.innerHTML = '';
         const hasNasHistory = data.nas_history && (data.nas_history.cpu?.length > 0 || data.nas_history.network?.total?.length > 0 || data.nas_history.temp?.length > 0);
         const hasMonitors = data.monitors && data.monitors.length > 0;
@@ -129,9 +256,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 else if (isNaN(uptimeRatio)) { uptimeRatio = parseFloat(m.all_time_uptime_ratio) || 0; }
                 totalUptime += uptimeRatio;
             });
+            // P0-2: friendly_name 等用户可控字符串用 escapeHtml
             const servicesHTML = monitors.map(monitor => {
                 const status = STATUS_MAP[monitor.status] || { text: '未知', class: 'status-warning', icon: 'fa-question-circle' };
-                return `<div class="service-card" id="monitor-card-${monitor.id}"> <div class="service-card-header" onclick="toggleDetailChart(${monitor.id})"> <div class="service-header"> <div class="service-name">${monitor.friendly_name} <i class="fas fa-chevron-down"></i></div> <div class="service-status ${status.class}"><i class="fas ${status.icon}"></i> ${status.text}</div> </div> </div> <div class="service-details"> <div class="service-details-content"> <div class="detail-chart-container"><canvas id="detail-chart-${monitor.id}"></canvas></div> </div> </div> </div>`;
+                return `<div class="service-card" id="monitor-card-${monitor.id}"> <div class="service-card-header" onclick="toggleDetailChart(${monitor.id})"> <div class="service-header"> <div class="service-name">${escapeHtml(monitor.friendly_name)} <i class="fas fa-chevron-down"></i></div> <div class="service-status ${status.class}"><i class="fas ${status.icon}"></i> ${escapeHtml(status.text)}</div> </div> </div> <div class="service-details"> <div class="service-details-content"> <div class="detail-chart-container"><canvas id="detail-chart-${monitor.id}"></canvas></div> </div> </div> </div>`;
             }).join('');
             const uptimeContainer = document.createElement('div');
             uptimeContainer.id = 'uptime-robot-container';
@@ -141,12 +269,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     function renderNasHistoryCharts(history) {
-        if (nasCpuHistoryChart) nasCpuHistoryChart.destroy();
-        if (nasNetworkHistoryChart) nasNetworkHistoryChart.destroy();
-        if (nasTempHistoryChart) nasTempHistoryChart.destroy();
+        destroyChartById('nas-history-cpu');
+        destroyChartById('nas-history-net');
+        destroyChartById('nas-history-temp');
+        if (nasCpuHistoryChart) { try { nasCpuHistoryChart.destroy(); } catch (e) {} nasCpuHistoryChart = null; }
+        if (nasNetworkHistoryChart) { try { nasNetworkHistoryChart.destroy(); } catch (e) {} nasNetworkHistoryChart = null; }
+        if (nasTempHistoryChart) { try { nasTempHistoryChart.destroy(); } catch (e) {} nasTempHistoryChart = null; }
         const cpuCtx = document.getElementById('nasCpuHistoryChart')?.getContext('2d');
         if (cpuCtx && history.cpu && history.cpu.length > 0) {
             nasCpuHistoryChart = new Chart(cpuCtx, { type: 'line', data: { datasets: [{ label: 'CPU Usage (%)', data: history.cpu.map(d => ({x: d.timestamp * 1000, y: d.usage})), borderColor: 'rgba(30, 136, 229, 0.7)', backgroundColor: 'rgba(30, 136, 229, 0.1)', borderWidth: 1.5, pointRadius: 0, tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, max: 100, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } } } });
+            registerChart('nas-history-cpu', nasCpuHistoryChart);
         }
         const netCtx = document.getElementById('nasNetworkHistoryChart')?.getContext('2d');
         if (netCtx && history.network) {
@@ -161,6 +293,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             if (datasets.length > 0) {
                 nasNetworkHistoryChart = new Chart(netCtx, { type: 'line', data: { datasets: datasets }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, title: { display: !isMobile, text: 'GB' }, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } } } });
+                registerChart('nas-history-net', nasNetworkHistoryChart);
             }
         }
         if (history.temp && history.temp.length > 0) {
@@ -169,6 +302,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const tempCtx = document.getElementById('nasTempHistoryChart')?.getContext('2d');
             if(tempCtx) {
                 nasTempHistoryChart = new Chart(tempCtx, { type: 'line', data: { datasets: [{ label: '温度 (°C)', data: history.temp.map(d => ({ x: d.timestamp * 1000, y: d.temperature })), borderColor: 'rgba(244, 67, 54, 0.7)', backgroundColor: 'rgba(244, 67, 54, 0.1)', borderWidth: 1.5, pointRadius: 0, tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: false, title: { display: !isMobile, text: '°C' }, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } } } });
+                registerChart('nas-history-temp', nasTempHistoryChart);
             }
         }
     }
@@ -179,20 +313,31 @@ document.addEventListener('DOMContentLoaded', function() {
         if (isExpanded) {
             const monitor = monitorDataCache.find(m => m.id === monitorId);
             if (monitor && monitor.response_times) createDetailChart(monitor);
+        } else {
+            // 收起时销毁对应图表，省内存
+            destroyChartById(`mon-detail-${monitorId}`);
         }
     };
     function createDetailChart(monitor) {
-        const canvasId = `detail-chart-${monitor.id}`, ctx = document.getElementById(canvasId)?.getContext('2d');
+        const chartId = `mon-detail-${monitor.id}`;
+        const canvasId = `detail-chart-${monitor.id}`;
+        const ctx = document.getElementById(canvasId)?.getContext('2d');
         if (!ctx) return;
-        if (Chart.getChart(ctx)) Chart.getChart(ctx).destroy();
+        destroyChartById(chartId);
         const chartData = monitor.response_times.map(rt => ({ x: rt.datetime * 1000, y: rt.value })).reverse();
-        new Chart(ctx, { type: 'line', data: { datasets: [{ label: '响应时间 (ms)', data: chartData, borderColor: 'rgba(30, 136, 229, 0.5)', backgroundColor: 'rgba(30, 136, 229, 0.1)', borderWidth: 1, tension: 0.3, fill: true, pointRadius: 0 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'hour' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } } } });
+        const c = new Chart(ctx, { type: 'line', data: { datasets: [{ label: '响应时间 (ms)', data: chartData, borderColor: 'rgba(30, 136, 229, 0.5)', backgroundColor: 'rgba(30, 136, 229, 0.1)', borderWidth: 1, tension: 0.3, fill: true, pointRadius: 0 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'hour' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } } } });
+        registerChart(chartId, c);
     }
     function renderOverviewCharts(monitors) {
         const rtCtx = document.getElementById('responseTimeChart')?.getContext('2d');
         if (rtCtx) {
-            if (Chart.getChart(rtCtx)) Chart.getChart(rtCtx).destroy();
-            new Chart(rtCtx, { type: 'bar', data: { labels: monitors.map(m => m.friendly_name.substring(0, isMobile ? 5 : 12) + (m.friendly_name.length > (isMobile ? 5 : 12) ? '...' : '')), datasets: [{ label: '响应时间 (ms)', data: monitors.map(m => m.average_response_time || 0), backgroundColor: 'rgba(30, 136, 229, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } } } });
+            destroyChartById('mon-overview-rt');
+            const c = new Chart(rtCtx, { type: 'bar', data: { labels: monitors.map(m => {
+                const name = m.friendly_name || '';
+                const max = isMobile ? 5 : 12;
+                return name.substring(0, max) + (name.length > max ? '...' : '');
+            }), datasets: [{ label: '响应时间 (ms)', data: monitors.map(m => m.average_response_time || 0), backgroundColor: 'rgba(30, 136, 229, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } } } });
+            registerChart('mon-overview-rt', c);
         }
     }
     
@@ -203,7 +348,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const cardsContainer = document.getElementById('latest-weather-cards');
         const chartsContainer = document.getElementById('weather-charts-container');
         try {
-            const response = await fetch(WEATHER_API);
+            // P1-7: 超时 + 指数退避重试
+            const response = await fetchWithRetry(WEATHER_API, {}, { timeout: 15000, retries: 3 });
             if (!response.ok) throw new Error(`无法从 Worker 获取数据，状态码: ${response.status}`);
             const data = await response.json();
             if (loadingMessage) loadingMessage.style.display = 'none';
@@ -211,26 +357,68 @@ document.addEventListener('DOMContentLoaded', function() {
             if (chartsContainer) chartsContainer.style.display = 'flex';
             displayLatestWeather(data.latest);
             displayTrendCharts(data.history);
+            tabLastLoaded['tab-weather'] = Date.now();
         } catch (error) {
             console.error('加载天气数据时发生错误:', error);
-            if (loadingMessage) loadingMessage.innerHTML = `<div class="error-state"><h2>加载天气数据失败</h2><p>${error.message}</p></div>`;
+            if (loadingMessage) {
+                loadingMessage.innerHTML = '';
+                const err = document.createElement('div');
+                err.className = 'error-state';
+                const h2 = document.createElement('h2');
+                h2.textContent = '加载天气数据失败';
+                const p = document.createElement('p');
+                p.textContent = error.message;
+                err.appendChild(h2); err.appendChild(p);
+                loadingMessage.appendChild(err);
+            }
         }
     }
     function displayLatestWeather(latestData) {
         const container = document.getElementById('latest-weather-cards');
         if (!container) return;
-        container.innerHTML = ''; 
-        if (!latestData || latestData.length === 0) { container.innerHTML = "<p>暂无最新的天气数据。</p>"; return; }
+        container.innerHTML = '';
+        if (!latestData || latestData.length === 0) {
+            const p = document.createElement('p');
+            p.textContent = '暂无最新的天气数据。';
+            container.appendChild(p);
+            return;
+        }
+        const frag = document.createDocumentFragment();
         for (const cityData of latestData) {
             const card = document.createElement('div');
             card.className = 'weather-card';
-            card.innerHTML = `<h2>${cityData.city_name}</h2> <p class="weather-text">${cityData.weather_text}</p> <p><strong>温度:</strong> ${cityData.temperature}°C (体感 ${cityData.feels_like}°C)</p> <p><strong>相对湿度:</strong> ${cityData.humidity}%</p> <p class="timestamp">更新于: ${new Date(cityData.observation_time).toLocaleString()}</p>`;
-            container.appendChild(card);
+            const h2 = document.createElement('h2');
+            h2.textContent = cityData.city_name || '';
+            const pWeather = document.createElement('p');
+            pWeather.className = 'weather-text';
+            pWeather.textContent = cityData.weather_text || '';
+            const pTemp = document.createElement('p');
+            const s1 = document.createElement('strong');
+            s1.textContent = '温度:';
+            pTemp.appendChild(s1);
+            pTemp.appendChild(document.createTextNode(` ${cityData.temperature}°C (体感 ${cityData.feels_like}°C)`));
+            const pHumid = document.createElement('p');
+            const s2 = document.createElement('strong');
+            s2.textContent = '相对湿度:';
+            pHumid.appendChild(s2);
+            pHumid.appendChild(document.createTextNode(` ${cityData.humidity}%`));
+            const pTime = document.createElement('p');
+            pTime.className = 'timestamp';
+            pTime.textContent = `更新于: ${new Date(cityData.observation_time).toLocaleString()}`;
+            card.appendChild(h2);
+            card.appendChild(pWeather);
+            card.appendChild(pTemp);
+            card.appendChild(pHumid);
+            card.appendChild(pTime);
+            frag.appendChild(card);
         }
+        container.appendChild(frag);
     }
     function displayTrendCharts(historyData) {
         const container = document.getElementById('weather-charts-container');
         if (!container) return;
+        // P0-1: 每次重建前销毁所有天气图表
+        destroyChartsWithPrefix('weather-');
         container.innerHTML = '';
         if (!historyData || historyData.length === 0) return;
         const cities = {};
@@ -251,7 +439,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 datasets.push({ label: `温度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.temperature })), borderColor: style.tempColor, backgroundColor: style.tempColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y', tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
                 datasets.push({ label: `湿度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.humidity })), borderColor: style.humidColor, backgroundColor: style.humidColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y1', borderDash: [5, 5], tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
             }
-            new Chart(canvas, { type: 'line', data: { datasets: datasets }, options: { responsive: true, interaction: { mode: 'x', intersect: false, }, plugins: { title: { display: true, text: `${cityName} - 24小时趋势`, font: { size: isMobile ? 14 : 18 } }, legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } } }, scales: { x: { type: 'time', time: { unit: 'hour', tooltipFormat: 'HH:mm', displayFormats: { hour: 'HH:mm' } }, title: { display: false }, ticks: { font: { size: 10 } } }, y: { type: 'linear', display: true, position: 'left', title: { display: !isMobile, text: '温度 (°C)' }, ticks: { font: { size: 10 } } }, y1: { type: 'linear', display: true, position: 'right', title: { display: !isMobile, text: '湿度 (%)' }, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } } } } });
+            // P0-1: 用城市名做唯一 id，注册到注册表
+            const chartId = `weather-${cityName}`;
+            const c = new Chart(canvas, { type: 'line', data: { datasets: datasets }, options: { responsive: true, interaction: { mode: 'x', intersect: false, }, plugins: { title: { display: true, text: `${cityName} - 24小时趋势`, font: { size: isMobile ? 14 : 18 } }, legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } } }, scales: { x: { type: 'time', time: { unit: 'hour', tooltipFormat: 'HH:mm', displayFormats: { hour: 'HH:mm' } }, title: { display: false }, ticks: { font: { size: 10 } } }, y: { type: 'linear', display: true, position: 'left', title: { display: !isMobile, text: '温度 (°C)' }, ticks: { font: { size: 10 } } }, y1: { type: 'linear', display: true, position: 'right', title: { display: !isMobile, text: '湿度 (%)' }, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } } } } });
+            registerChart(chartId, c);
         }
     }
 
@@ -266,26 +457,39 @@ document.addEventListener('DOMContentLoaded', function() {
             'https://macapi.111312.xyz/metrics'
         ];
 
-        let nasInstances = {};
+        // P0-3 / P1-6: 预编译正则（热路径不重复编译）
+        const RE_MODE = /mode="([^"]+)"/;
+        const RE_DEVICE = /device="([^"]+)"/;
+        const RE_MOUNT = /mountpoint="([^"]+)"/;
+        const RE_LINESTART = /^node_(cpu_seconds_total|memory_MemTotal_bytes|memory_MemAvailable_bytes|network_receive_bytes_total|network_transmit_bytes_total|boot_time_seconds|thermal_zone_temp|hwmon_temp_input|filesystem_size_bytes|filesystem_avail_bytes)/;
+        const IGNORED_IFACE = /^(lo|veth|docker0|tailscale0)/;
+
+        const NAS_CONCURRENT_LIMIT = 3;      // 最多同时 3 个 NAS 请求
+        const NAS_FETCH_TIMEOUT = 15000;     // 单次请求 15s 超时
+        const NAS_POLL_INTERVAL = 10000;     // 前台 10s
+        const NAS_POLL_BACKGROUND = 60000;   // 后台 60s（P1-6）
+        const NAS_UPTIME_INTERVAL = 60000;   // P1-4: 60s 更新一次运行时间（分钟级显示）
+
+        let nasInstances = {};                // url -> { 状态数据 + elements: {... 缓存的 DOM 引用 } }
         let nasUrlList = [];
-        let updateInterval;
+        let updateInterval = null;
+        let uptimeInterval = null;
         let totalSpeeds = { up: 0, down: 0 };
         const originalTitle = document.title;
+        // P1-6: 可见性状态
+        let currentPollInterval = NAS_POLL_INTERVAL;
 
-        function nas_formatBytes(bytes, decimals = 1) {
-            if (bytes === undefined || bytes === null || bytes <= 0) return '0 B';
+        // ============ NAS 专用工具 ============
+        function nas_formatSize(bytes, sizes, decimals = 1) {
+            // 合并 formatBytes / formatSpeed，避免重复 + 去掉 Math.log 边界问题
+            if (bytes == null || bytes <= 0) return sizes[0] === 'B' ? `0 ${sizes[0]}` : `0 ${sizes[1]}`;
             const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(decimals))} ${sizes[i]}`;
+            let v = bytes, i = 0;
+            while (v >= k && i < sizes.length - 1) { v /= k; i++; }
+            return `${parseFloat(v.toFixed(decimals))} ${sizes[i]}`;
         }
-        function nas_formatSpeed(bytesPerSecond, decimals = 2) {
-             if (bytesPerSecond === undefined || bytesPerSecond === null || bytesPerSecond < 1) return `0 KB/s`;
-            const k = 1024;
-            const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
-            const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
-            return `${parseFloat((bytesPerSecond / Math.pow(k, i)).toFixed(decimals))} ${sizes[i]}`;
-        }
+        function nas_formatBytes(bytes, decimals = 1) { return nas_formatSize(bytes, ['B','KB','MB','GB','TB'], decimals); }
+        function nas_formatSpeed(bytesPerSecond, decimals = 2) { return nas_formatSize(bytesPerSecond, ['B/s','KB/s','MB/s','GB/s'], decimals); }
         function nas_formatUptime(seconds) {
             if (!seconds || seconds <= 0) return '--';
             seconds = Math.floor(seconds);
@@ -294,211 +498,291 @@ document.addEventListener('DOMContentLoaded', function() {
             const m = Math.floor(seconds % 3600 / 60);
             return `${d}天 ${h}小时 ${m}分钟`;
         }
+
+        // P0-3: parseNasRealtimeMetrics 优化：预编译正则 + indexOf 快速过滤
         function parseNasRealtimeMetrics(text) {
             const metrics = { cpu: { total: 0, idle: 0 }, memory: { total: 0, available: 0 }, network: { received: 0, transmitted: 0 }, bootTime: 0, temp: null, filesystems: {} };
-            const ignoredInterfaces = /^(lo|veth|docker0|tailscale0)/;
             let primaryInterface = null;
             const networkData = {};
             const targetMountpoint = '/etc/hostname';
             const lines = text.split('\n');
-            for (const line of lines) {
-                if (line.startsWith('#')) continue;
-                const parts = line.split(' ');
-                const value = parseFloat(parts[1]);
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (line.length === 0 || line.charCodeAt(0) === 35 /* # */) continue;
+                // 快速跳过不相关行（indexOf 比 N 次 startsWith 快得多）
+                if (!RE_LINESTART.test(line)) continue;
+                const sp = line.indexOf(' ');
+                if (sp < 0) continue;
+                const value = parseFloat(line.substring(sp + 1));
                 if (line.startsWith('node_cpu_seconds_total')) {
-                    const modeMatch = line.match(/mode="([^"]+)"/);
-                    if (modeMatch) {
+                    const m = line.match(RE_MODE);
+                    if (m) {
                         metrics.cpu.total += value;
-                        if (modeMatch[1] === 'idle') metrics.cpu.idle += value;
+                        if (m[1] === 'idle') metrics.cpu.idle += value;
                     }
                 } else if (line.startsWith('node_memory_MemTotal_bytes')) metrics.memory.total = value;
                 else if (line.startsWith('node_memory_MemAvailable_bytes')) metrics.memory.available = value;
                 else if (line.startsWith('node_network_receive_bytes_total') || line.startsWith('node_network_transmit_bytes_total')) {
-                    const isReceive = line.startsWith('node_network_receive_bytes_total');
-                    const interfaceMatch = line.match(/device="([^"]+)"/);
-                    if (interfaceMatch) {
-                        const device = interfaceMatch[1];
-                        if (!networkData[device]) networkData[device] = { received: 0, transmitted: 0 };
-                        if (isReceive) networkData[device].received = value;
-                        else networkData[device].transmitted = value;
+                    const isRecv = line.startsWith('node_network_receive_bytes_total');
+                    const m = line.match(RE_DEVICE);
+                    if (m) {
+                        const dev = m[1];
+                        if (!networkData[dev]) networkData[dev] = { received: 0, transmitted: 0 };
+                        if (isRecv) networkData[dev].received = value;
+                        else networkData[dev].transmitted = value;
                     }
                 } else if (line.startsWith('node_boot_time_seconds')) metrics.bootTime = value;
                 else if (line.startsWith('node_thermal_zone_temp') || line.startsWith('node_hwmon_temp_input')) {
-                     if (metrics.temp === null) metrics.temp = value;
-                }
-                else if (line.startsWith('node_filesystem_size_bytes') || line.startsWith('node_filesystem_avail_bytes')) {
-                    const mountpointMatch = line.match(/mountpoint="([^"]+)"/);
-                    if (mountpointMatch && mountpointMatch[1] === targetMountpoint) {
-                        const mountpoint = mountpointMatch[1];
-                        if (!metrics.filesystems[mountpoint]) metrics.filesystems[mountpoint] = { size: 0, avail: 0 };
-                        if (line.startsWith('node_filesystem_size_bytes')) metrics.filesystems[mountpoint].size = value;
-                        if (line.startsWith('node_filesystem_avail_bytes')) metrics.filesystems[mountpoint].avail = value;
+                    if (metrics.temp === null) metrics.temp = value;
+                } else if (line.startsWith('node_filesystem_size_bytes') || line.startsWith('node_filesystem_avail_bytes')) {
+                    const m = line.match(RE_MOUNT);
+                    if (m && m[1] === targetMountpoint) {
+                        const mp = m[1];
+                        if (!metrics.filesystems[mp]) metrics.filesystems[mp] = { size: 0, avail: 0 };
+                        if (line.startsWith('node_filesystem_size_bytes')) metrics.filesystems[mp].size = value;
+                        else metrics.filesystems[mp].avail = value;
                     }
                 }
             }
-            for (const device in networkData) {
-                if (!ignoredInterfaces.test(device)) {
-                    primaryInterface = device;
-                    break;
-                }
+            for (const dev in networkData) {
+                if (!IGNORED_IFACE.test(dev)) { primaryInterface = dev; break; }
             }
-            if (!primaryInterface && networkData['eth0']) {
-                primaryInterface = 'eth0';
-            }
-            if (primaryInterface && networkData[primaryInterface]) {
-                metrics.network = networkData[primaryInterface];
-            }
+            if (!primaryInterface && networkData.eth0) primaryInterface = 'eth0';
+            if (primaryInterface && networkData[primaryInterface]) metrics.network = networkData[primaryInterface];
             return metrics;
         }
-        function getUrlsFromStorage() {
-            const storedUrls = localStorage.getItem('nasUrlList');
-            const storedVersion = parseInt(localStorage.getItem('nasUrlsVersion') || '0', 10);
 
-            // 首次使用：直接写入默认值和版本号
+        // storage 带 try-catch（P2 顺便修）
+        function safeLsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+        function safeLsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+
+        function getUrlsFromStorage() {
+            const storedUrls = safeLsGet('nasUrlList');
+            const storedVersion = parseInt(safeLsGet('nasUrlsVersion') || '0', 10);
             if (!storedUrls) {
-                localStorage.setItem('nasUrlList', JSON.stringify(DEFAULT_NAS_URLS));
-                localStorage.setItem('nasUrlsVersion', String(NAS_URLS_VERSION));
+                safeLsSet('nasUrlList', JSON.stringify(DEFAULT_NAS_URLS));
+                safeLsSet('nasUrlsVersion', String(NAS_URLS_VERSION));
                 return DEFAULT_NAS_URLS.slice();
             }
-
             let parsedUrls;
             try {
                 const parsed = JSON.parse(storedUrls);
                 parsedUrls = Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_NAS_URLS.slice();
-            } catch (e) {
-                parsedUrls = DEFAULT_NAS_URLS.slice();
-            }
-
-            // 版本号不一致：需要合并更新
+            } catch (e) { parsedUrls = DEFAULT_NAS_URLS.slice(); }
             if (storedVersion !== NAS_URLS_VERSION) {
-                // 找出用户自定义的 URL（存储列表中不在 DEFAULT_NAS_URLS 里的那些）
                 const userCustomUrls = parsedUrls.filter(url => !DEFAULT_NAS_URLS.includes(url));
-                // 合并：新的 DEFAULT_NAS_URLS（代码中最新） + 用户自定义 URL（保留用户手动添加的）
                 const merged = [...DEFAULT_NAS_URLS, ...userCustomUrls];
-                // 写回存储
-                localStorage.setItem('nasUrlList', JSON.stringify(merged));
-                localStorage.setItem('nasUrlsVersion', String(NAS_URLS_VERSION));
+                safeLsSet('nasUrlList', JSON.stringify(merged));
+                safeLsSet('nasUrlsVersion', String(NAS_URLS_VERSION));
                 return merged;
             }
-
             return parsedUrls;
         }
         function saveUrlsToStorage(urls) {
-            localStorage.setItem('nasUrlList', JSON.stringify(urls));
-            localStorage.setItem('nasUrlsVersion', String(NAS_URLS_VERSION));
+            safeLsSet('nasUrlList', JSON.stringify(urls));
+            safeLsSet('nasUrlsVersion', String(NAS_URLS_VERSION));
         }
+
+        // P1-4: 每个 NAS 实例的 DOM 引用缓存，避免热路径 getElementById
+        function cacheNasElements(index) {
+            return {
+                cpuUsage: document.getElementById(`nas-cpu-usage-${index}`),
+                memUsage: document.getElementById(`nas-mem-usage-${index}`),
+                memDetails: document.getElementById(`nas-mem-details-${index}`),
+                tempCard: document.getElementById(`nas-temp-card-${index}`),
+                tempValue: document.getElementById(`nas-temp-value-${index}`),
+                netSpeed: document.getElementById(`nas-net-speed-${index}`),
+                diskUsage: document.getElementById(`nas-disk-usage-${index}`),
+                diskDetails: document.getElementById(`nas-disk-details-${index}`),
+                systemUptime: document.getElementById(`nas-system-uptime-${index}`),
+                bootTime: document.getElementById(`nas-boot-time-${index}`),
+                statusText: document.getElementById(`nas-status-text-${index}`),
+                errorText: document.getElementById(`nas-error-text-${index}`)
+            };
+        }
+
         function createNasCardHtml(url, index) {
-            const urlHostname = new URL(url).hostname;
-            return `<div class="nas-card-container" data-url="${url}"> <div style="font-weight: bold; color: var(--primary-dark); margin-bottom: 15px; text-align: center;">${urlHostname}</div> <div class="nas-card-grid"> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-microchip"></i></div><div class="nas-metric-details"><span class="nas-metric-label">CPU</span><div class="nas-metric-value" id="nas-cpu-usage-${index}">--%</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-memory"></i></div><div class="nas-metric-details"><span class="nas-metric-label">内存</span><div class="nas-metric-value" id="nas-mem-usage-${index}">--%</div><div class="nas-metric-subvalue" id="nas-mem-details-${index}">--/--GB</div></div></div> <div class="nas-metric-card" id="nas-temp-card-${index}" style="display: none;"><div class="nas-metric-icon"><i class="fas fa-thermometer-half"></i></div><div class="nas-metric-details"><span class="nas-metric-label">温度</span><div class="nas-metric-value" id="nas-temp-value-${index}">--°C</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-exchange-alt"></i></div><div class="nas-metric-details"><span class="nas-metric-label">上传/下载</span><div class="nas-metric-value small-font" id="nas-net-speed-${index}">-- / --</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-hdd"></i></div><div class="nas-metric-details"><span class="nas-metric-label">系统存储</span><div class="nas-metric-value" id="nas-disk-usage-${index}">--%</div><div class="nas-metric-subvalue" id="nas-disk-details-${index}">--/--GB</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-history"></i></div><div class="nas-metric-details"><span class="nas-metric-label">运行时间</span><div class="nas-metric-value small-font" id="nas-system-uptime-${index}">--</div><div class="nas-metric-subvalue" id="nas-boot-time-${index}">--</div></div></div> </div> <div id="nas-status-footer-${index}" class="nas-status-footer"><span id="nas-status-text-${index}">正在连接...</span><span id="nas-error-text-${index}" class="nas-error"></span></div> </div>`;
+            const urlHostname = escapeHtml(new URL(url).hostname); // P0-2
+            return `<div class="nas-card-container" data-url="${escapeHtml(url)}"> <div style="font-weight: bold; color: var(--primary-dark); margin-bottom: 15px; text-align: center;">${urlHostname}</div> <div class="nas-card-grid"> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-microchip"></i></div><div class="nas-metric-details"><span class="nas-metric-label">CPU</span><div class="nas-metric-value" id="nas-cpu-usage-${index}">--%</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-memory"></i></div><div class="nas-metric-details"><span class="nas-metric-label">内存</span><div class="nas-metric-value" id="nas-mem-usage-${index}">--%</div><div class="nas-metric-subvalue" id="nas-mem-details-${index}">--/--GB</div></div></div> <div class="nas-metric-card" id="nas-temp-card-${index}" style="display: none;"><div class="nas-metric-icon"><i class="fas fa-thermometer-half"></i></div><div class="nas-metric-details"><span class="nas-metric-label">温度</span><div class="nas-metric-value" id="nas-temp-value-${index}">--°C</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-exchange-alt"></i></div><div class="nas-metric-details"><span class="nas-metric-label">上传/下载</span><div class="nas-metric-value small-font" id="nas-net-speed-${index}">-- / --</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-hdd"></i></div><div class="nas-metric-details"><span class="nas-metric-label">系统存储</span><div class="nas-metric-value" id="nas-disk-usage-${index}">--%</div><div class="nas-metric-subvalue" id="nas-disk-details-${index}">--/--GB</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-history"></i></div><div class="nas-metric-details"><span class="nas-metric-label">运行时间</span><div class="nas-metric-value small-font" id="nas-system-uptime-${index}">--</div><div class="nas-metric-subvalue" id="nas-boot-time-${index}">--</div></div></div> </div> <div id="nas-status-footer-${index}" class="nas-status-footer"><span id="nas-status-text-${index}">正在连接...</span><span id="nas-error-text-${index}" class="nas-error"></span></div> </div>`;
         }
         function renderNasContainers() {
             const container = document.getElementById('nas-grid-container');
             if (!container) return;
             container.innerHTML = nasUrlList.map(createNasCardHtml).join('');
+            // P1-4: 渲染后立刻缓存所有 DOM 引用
+            nasUrlList.forEach((url, index) => {
+                if (!nasInstances[url]) nasInstances[url] = {};
+                nasInstances[url].elements = cacheNasElements(index);
+            });
         }
         function renderUrlListInModal() {
             const listContainer = document.getElementById('nas-url-list');
             if (!listContainer) return;
-            listContainer.innerHTML = nasUrlList.map((url, index) => `<div class="nas-url-item"> <span>${url}</span> <button data-index="${index}" class="delete-nas-button">删除</button> </div>`).join('');
+            listContainer.innerHTML = '';
+            const frag = document.createDocumentFragment();
+            nasUrlList.forEach((url, index) => {
+                const item = document.createElement('div');
+                item.className = 'nas-url-item';
+                const span = document.createElement('span');
+                span.textContent = url;
+                const btn = document.createElement('button');
+                btn.className = 'delete-nas-button';
+                btn.setAttribute('data-index', String(index));
+                btn.textContent = '删除';
+                item.appendChild(span);
+                item.appendChild(btn);
+                frag.appendChild(item);
+            });
+            listContainer.appendChild(frag);
         }
-        
+
         function updatePageTitle() {
+            // P1-6: 页面不可见时不改标题，省资源
+            if (document.hidden) return;
             const upSpeed = nas_formatSpeed(totalSpeeds.up, 1);
             const downSpeed = nas_formatSpeed(totalSpeeds.down, 1);
             document.title = `↑${upSpeed} / ↓${downSpeed} | ${originalTitle}`;
         }
 
-        async function updateSingleNasDisplay(url, index) {
-            const errorText = document.getElementById(`nas-error-text-${index}`);
+        // 快速安全写 DOM（用 textContent，防 XSS + 比 innerHTML 快）
+        function setText(el, text) { if (el) el.textContent = text; }
+
+        async function updateSingleNasDisplay(url, index, outerSignal) {
+            const inst = nasInstances[url] || (nasInstances[url] = {});
+            const els = inst.elements;
             try {
-                const response = await fetch(NAS_WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url }) });
+                // P0-3: 15s 超时，且能被外层 AbortController 取消
+                const response = await fetchWithTimeout(
+                    NAS_WORKER_URL,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: url }),
+                        signal: outerSignal
+                    },
+                    NAS_FETCH_TIMEOUT
+                );
                 if (!response.ok) throw new Error(`代理请求失败: ${response.status}`);
                 const text = await response.text();
                 if (text.includes('Error:')) throw new Error(text.replace('Error: ', ''));
                 const now = Date.now();
-                const instance = nasInstances[url] || {};
                 const currentMetrics = parseNasRealtimeMetrics(text);
-                
-                const updateElement = (id, content) => {
-                    const el = document.getElementById(id);
-                    if (el) el.innerHTML = content;
-                };
 
-                if (instance.previousCpuData) {
-                    const totalDiff = currentMetrics.cpu.total - instance.previousCpuData.total;
-                    const idleDiff = currentMetrics.cpu.idle - instance.previousCpuData.idle;
-                    updateElement(`nas-cpu-usage-${index}`, `${(totalDiff > 0 ? 100 * (1 - (idleDiff / totalDiff)) : 0).toFixed(1)}%`);
+                if (inst.previousCpuData) {
+                    const totalDiff = currentMetrics.cpu.total - inst.previousCpuData.total;
+                    const idleDiff = currentMetrics.cpu.idle - inst.previousCpuData.idle;
+                    setText(els?.cpuUsage, `${(totalDiff > 0 ? 100 * (1 - (idleDiff / totalDiff)) : 0).toFixed(1)}%`);
                 }
-                const memUsed = currentMetrics.memory.total - currentMetrics.memory.available;
-                updateElement(`nas-mem-usage-${index}`, `${(100 * memUsed / currentMetrics.memory.total).toFixed(1)}%`);
-                updateElement(`nas-mem-details-${index}`, `${nas_formatBytes(memUsed, 2)}/${nas_formatBytes(currentMetrics.memory.total, 2)}`);
-                
-                const tempCard = document.getElementById(`nas-temp-card-${index}`);
+                if (currentMetrics.memory.total > 0) {
+                    const memUsed = currentMetrics.memory.total - currentMetrics.memory.available;
+                    setText(els?.memUsage, `${(100 * memUsed / currentMetrics.memory.total).toFixed(1)}%`);
+                    setText(els?.memDetails, `${nas_formatBytes(memUsed, 2)}/${nas_formatBytes(currentMetrics.memory.total, 2)}`);
+                }
                 if (currentMetrics.temp !== null) {
-                    if(tempCard) tempCard.style.display = 'flex';
-                    updateElement(`nas-temp-value-${index}`, `${currentMetrics.temp.toFixed(1)}°C`);
+                    if (els?.tempCard) els.tempCard.style.display = 'flex';
+                    setText(els?.tempValue, `${currentMetrics.temp.toFixed(1)}°C`);
                 }
-                
                 let upSpeed = 0, downSpeed = 0;
-                if (instance.previousNetData && instance.lastFetchTime) {
-                    const timeDelta = (now - instance.lastFetchTime) / 1000;
-                    if(timeDelta > 0) {
-                        downSpeed = (currentMetrics.network.received - instance.previousNetData.received) / timeDelta;
-                        upSpeed = (currentMetrics.network.transmitted - instance.previousNetData.transmitted) / timeDelta;
-                        updateElement(`nas-net-speed-${index}`, `${nas_formatSpeed(upSpeed)} / ${nas_formatSpeed(downSpeed)}`);
+                if (inst.previousNetData && inst.lastFetchTime) {
+                    const timeDelta = (now - inst.lastFetchTime) / 1000;
+                    if (timeDelta > 0) {
+                        downSpeed = Math.max(0, (currentMetrics.network.received - inst.previousNetData.received) / timeDelta);
+                        upSpeed = Math.max(0, (currentMetrics.network.transmitted - inst.previousNetData.transmitted) / timeDelta);
+                        setText(els?.netSpeed, `${nas_formatSpeed(upSpeed)} / ${nas_formatSpeed(downSpeed)}`);
                     }
                 }
-                nasInstances[url] = { ...nasInstances[url], upSpeed: upSpeed, downSpeed: downSpeed };
+                inst.upSpeed = upSpeed; inst.downSpeed = downSpeed;
 
                 const diskData = currentMetrics.filesystems['/etc/hostname'];
                 if (diskData && diskData.size > 0) {
                     const diskUsed = diskData.size - diskData.avail;
-                    const diskPercent = (100 * diskUsed / diskData.size).toFixed(1);
-                    updateElement(`nas-disk-usage-${index}`, `${diskPercent}%`);
-                    updateElement(`nas-disk-details-${index}`, `(${nas_formatBytes(diskUsed)}/${nas_formatBytes(diskData.size)})`);
+                    setText(els?.diskUsage, `${(100 * diskUsed / diskData.size).toFixed(1)}%`);
+                    setText(els?.diskDetails, `(${nas_formatBytes(diskUsed)}/${nas_formatBytes(diskData.size)})`);
                 }
                 if (currentMetrics.bootTime > 0) {
-                    nasInstances[url] = { ...nasInstances[url], bootTimestamp: currentMetrics.bootTime };
+                    inst.bootTimestamp = currentMetrics.bootTime;
                     const bootDate = new Date(currentMetrics.bootTime * 1000);
-                    updateElement(`nas-boot-time-${index}`, `开机于: ${bootDate.toLocaleDateString()}`);
+                    setText(els?.bootTime, `开机于: ${bootDate.toLocaleDateString()}`);
+                    // 拿到 bootTime 立即算一次 uptime，不用等下次 uptime 定时器
+                    if (els?.systemUptime) els.systemUptime.textContent = nas_formatUptime((Date.now() / 1000) - inst.bootTimestamp);
                 }
-                nasInstances[url] = { ...nasInstances[url], previousCpuData: currentMetrics.cpu, previousNetData: currentMetrics.network, lastFetchTime: now };
-                const statusText = document.getElementById(`nas-status-text-${index}`);
-                if (statusText) statusText.textContent = `上次更新: ${new Date().toLocaleTimeString()}`;
-                if (errorText) errorText.textContent = '';
+                inst.previousCpuData = currentMetrics.cpu;
+                inst.previousNetData = currentMetrics.network;
+                inst.lastFetchTime = now;
+                setText(els?.statusText, `上次更新: ${new Date().toLocaleTimeString()}`);
+                setText(els?.errorText, '');
             } catch (error) {
+                if (error.name === 'AbortError') return; // 被取消，不打印不置错
                 console.error(`更新NAS[${url}]状态失败:`, error);
-                if (errorText) errorText.textContent = `错误: ${error.message}`;
-                nasInstances[url] = { ...nasInstances[url], upSpeed: 0, downSpeed: 0 };
+                setText(els?.errorText, `错误: ${error.message}`);
+                inst.upSpeed = 0; inst.downSpeed = 0;
             }
         }
+
         function updateAllUptimes() {
-            nasUrlList.forEach((url, index) => {
-                const instance = nasInstances[url];
-                if (instance && instance.bootTimestamp > 0) {
-                    const uptimeEl = document.getElementById(`nas-system-uptime-${index}`);
-                    if (uptimeEl) uptimeEl.textContent = nas_formatUptime((Date.now() / 1000) - instance.bootTimestamp);
-                }
-            });
+            const nowSec = Date.now() / 1000;
+            for (let i = 0; i < nasUrlList.length; i++) {
+                const url = nasUrlList[i];
+                const inst = nasInstances[url];
+                if (!inst || !inst.bootTimestamp || inst.bootTimestamp <= 0) continue;
+                // P1-4: 走缓存引用，不再 getElementById
+                const el = inst.elements?.systemUptime || document.getElementById(`nas-system-uptime-${i}`);
+                if (el) el.textContent = nas_formatUptime(nowSec - inst.bootTimestamp);
+            }
         }
+
+        function stopUpdatingAllNas() {
+            if (updateInterval) { clearInterval(updateInterval); updateInterval = null; }
+            // P0-3: 取消当前所有在飞请求
+            if (nasFetchAbortController) { try { nasFetchAbortController.abort(); } catch (e) {} nasFetchAbortController = null; }
+        }
+
         function startUpdatingAllNas() {
-            if (updateInterval) clearInterval(updateInterval);
+            stopUpdatingAllNas();
             const updateAll = async () => {
-                const updatePromises = nasUrlList.map((url, index) => updateSingleNasDisplay(url, index));
-                await Promise.all(updatePromises);
-                
+                // P0-3: 每次循环先 abort 掉上次可能残留的，再创建新的
+                if (nasFetchAbortController) { try { nasFetchAbortController.abort(); } catch (e) {} }
+                nasFetchAbortController = new AbortController();
+                // P0-3: 并发限流 3 个，避免同域名连接池打满
+                await promiseAllLimited(nasUrlList, NAS_CONCURRENT_LIMIT, (url, idx) =>
+                    updateSingleNasDisplay(url, idx, nasFetchAbortController.signal)
+                );
                 totalSpeeds = { up: 0, down: 0 };
-                for (const url in nasInstances) {
-                    if (nasUrlList.includes(url)) {
-                        totalSpeeds.up += nasInstances[url].upSpeed || 0;
-                        totalSpeeds.down += nasInstances[url].downSpeed || 0;
+                for (const url of nasUrlList) {
+                    const inst = nasInstances[url];
+                    if (inst) {
+                        totalSpeeds.up += inst.upSpeed || 0;
+                        totalSpeeds.down += inst.downSpeed || 0;
                     }
                 }
                 updatePageTitle();
             };
             updateAll();
-            updateInterval = setInterval(updateAll, 10000);
+            updateInterval = setInterval(updateAll, currentPollInterval);
         }
+
+        // P1-6: 页面可见性变化时调整轮询频率
+        function onVisibilityChange() {
+            if (document.hidden) {
+                // 切后台：标题还原 + 轮询降级到 60s
+                if (document.title !== originalTitle) document.title = originalTitle;
+                if (currentPollInterval !== NAS_POLL_BACKGROUND) {
+                    currentPollInterval = NAS_POLL_BACKGROUND;
+                    startUpdatingAllNas();
+                }
+            } else {
+                // 切回前台：立即补刷一次 + 恢复 10s
+                if (currentPollInterval !== NAS_POLL_INTERVAL) {
+                    currentPollInterval = NAS_POLL_INTERVAL;
+                    startUpdatingAllNas();
+                } else {
+                    // 即使间隔没变，用户切回来也应该让标题和状态立刻新
+                    updatePageTitle();
+                }
+            }
+        }
+        document.addEventListener('visibilitychange', onVisibilityChange);
+
         function setupSettingsModal() {
             const icon = document.getElementById('settings-icon');
             const overlay = document.getElementById('settings-modal-overlay');
@@ -527,7 +811,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (e.target.classList.contains('delete-nas-button')) {
                     const indexToRemove = parseInt(e.target.getAttribute('data-index'), 10);
                     const urlToRemove = nasUrlList[indexToRemove];
-                    delete nasInstances[urlToRemove];
+                    if (nasInstances[urlToRemove]) delete nasInstances[urlToRemove];
                     nasUrlList.splice(indexToRemove, 1);
                     saveUrlsToStorage(nasUrlList);
                     renderUrlListInModal();
@@ -536,11 +820,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
-        
+
         nasUrlList = getUrlsFromStorage();
         renderNasContainers();
         startUpdatingAllNas();
-        setInterval(updateAllUptimes, 1000);
+        // P1-4: 从 1000ms 改到 60000ms，省 ~60 倍的 DOM 查询开销
+        updateAllUptimes(); // 启动时先跑一次
+        uptimeInterval = setInterval(updateAllUptimes, NAS_UPTIME_INTERVAL);
         setupSettingsModal();
     }
 
