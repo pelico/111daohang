@@ -259,7 +259,8 @@ document.addEventListener('DOMContentLoaded', function() {
     function initNasModule() {
         const DEFAULT_NAS_URLS = [
             'https://nas-api.111312.xyz/metrics',
-            'https://wkyapi.111312.xyz/metrics'
+            'https://wkyapi.111312.xyz/metrics',
+            'https://macapi.111312.xyz/metrics'
         ];
 
         let nasInstances = {};
