@@ -108,8 +108,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- 2. 选项卡切换逻辑 ---
     const iframeTabsLoaded = { 'tab-chat': false, 'tab-voice': false };
     const iframeTabSources = {
-        'tab-chat': 'yychat-chat/index.html',
-        'tab-voice': 'tmjlchat.html'
+        'tab-chat': 'yychat-chat/index.html?v=aacd8f9',
+        'tab-voice': 'tmjlchat.html?v=aacd8f9'
     };
     function handleTabs() {
         const tabButtons = document.querySelectorAll('.tab-button');
