@@ -106,6 +106,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // --- 2. 选项卡切换逻辑 ---
+    const iframeTabsLoaded = { 'tab-chat': false, 'tab-voice': false };
+    const iframeTabSources = {
+        'tab-chat': 'yychat-chat/index.html',
+        'tab-voice': 'tmjlchat.html'
+    };
     function handleTabs() {
         const tabButtons = document.querySelectorAll('.tab-button');
         const tabContents = document.querySelectorAll('.tab-content');
@@ -117,6 +122,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 const tabId = button.getAttribute('data-tab');
                 const activeTab = document.getElementById(tabId);
                 if (activeTab) activeTab.classList.add('active');
+                // 懒加载 iframe 标签页
+                if (tabId === 'tab-chat' || tabId === 'tab-voice') {
+                    lazyLoadIframeTab(tabId);
+                }
                 // P1-5: 首次加载 或 距上次成功加载超过 10 分钟则补刷
                 const now = Date.now();
                 const isStale = now - tabLastLoaded[tabId] > TAB_STALE_MS;
@@ -131,6 +140,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         });
+    }
+
+    function lazyLoadIframeTab(tabId) {
+        if (iframeTabsLoaded[tabId]) return;
+        const iframeId = tabId === 'tab-chat' ? 'chat-iframe' : 'voice-iframe';
+        const loadingId = tabId === 'tab-chat' ? 'chat-loading' : 'voice-loading';
+        const iframe = document.getElementById(iframeId);
+        const loading = document.getElementById(loadingId);
+        if (!iframe || !loading) return;
+        const src = iframeTabSources[tabId];
+        iframe.addEventListener('load', function onLoad() {
+            iframe.removeEventListener('load', onLoad);
+            loading.style.display = 'none';
+            iframe.style.display = 'block';
+            iframeTabsLoaded[tabId] = true;
+        });
+        iframe.src = src;
     }
 
     // --- 3. 我的通知功能 ---

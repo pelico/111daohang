@@ -66,6 +66,8 @@
         <!-- 选项卡切换 -->
         <div class="tabs">
             <button class="tab-button active" data-tab="tab-links"><i class="fas fa-star"></i> 常用网站</button>
+            <button class="tab-button" data-tab="tab-chat"><i class="fas fa-comments"></i> 聊天室</button>
+            <button class="tab-button" data-tab="tab-voice"><i class="fas fa-microphone"></i> 精灵语音</button>
             <button class="tab-button" data-tab="tab-monitoring"><i class="fas fa-heartbeat"></i> 服务监控</button>
             <button class="tab-button" data-tab="tab-notifications"><i class="fas fa-bell"></i> 我的通知</button>
             <button class="tab-button" data-tab="tab-weather"><i class="fas fa-cloud-sun"></i> 天气仪表盘</button>
@@ -113,6 +115,22 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        <div class="tab-content iframe-tab" id="tab-chat">
+            <div class="iframe-loading" id="chat-loading">
+                <div class="loading-spinner"></div>
+                <p>聊天室加载中...</p>
+            </div>
+            <iframe id="chat-iframe" class="embedded-iframe" style="display:none;" allow="microphone; clipboard-read; clipboard-write;"></iframe>
+        </div>
+
+        <div class="tab-content iframe-tab" id="tab-voice">
+            <div class="iframe-loading" id="voice-loading">
+                <div class="loading-spinner"></div>
+                <p>精灵语音加载中...</p>
+            </div>
+            <iframe id="voice-iframe" class="embedded-iframe" style="display:none;"></iframe>
         </div>
         
         <div class="tab-content" id="tab-monitoring"></div>

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>家庭传声筒</title>
+    <style>
+        :root { --primary: #07c160; --bg: #f5f5f5; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body { 
+            font-family: -apple-system, sans-serif; 
+            background: var(--bg); 
+            height: 100vh; 
+            height: 100dvh; 
+            display: flex; 
+            flex-direction: column; 
+            overflow: hidden; 
+        }
+        
+        .hidden { display: none !important; }
+        
+        #login-overlay { position: fixed; inset: 0; background: #fff; z-index: 999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .login-input { padding: 12px; border: 1px solid #ddd; border-radius: 8px; width: 80%; margin-bottom: 15px; font-size: 18px; }
+        .login-btn { padding: 12px; background: var(--primary); color: #fff; border: none; border-radius: 8px; width: 80%; font-weight: bold; font-size: 18px; }
+        
+        #header { 
+            padding: 15px; 
+            text-align: center; 
+            background: #ededed; 
+            border-bottom: 1px solid #ddd; 
+            font-weight: bold;
+            flex-shrink: 0; 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        #chat-box { 
+            flex: 1; 
+            overflow-y: auto; 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 15px; 
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .message { max-width: 85%; padding: 10px 14px; border-radius: 8px; font-size: 16px; word-break: break-all; }
+        .message.dad { align-self: flex-end; background: #95ec69; color: #000; }
+        .message.kid { align-self: flex-start; background: #fff; border: 1px solid #ddd; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        
+        #input-area { 
+            padding: 10px; 
+            background: #f7f7f7; 
+            display: flex; 
+            gap: 8px; 
+            border-top: 1px solid #ddd; 
+            align-items: center;
+            flex-shrink: 0; 
+            padding-bottom: max(10px, env(safe-area-inset-bottom)); 
+        }
+        
+        #person-select { padding: 0 5px; height: 40px; border: 1px solid #ddd; border-radius: 6px; background: #fff; max-width: 150px;}
+        #msg-input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; background: #fff; height: 40px; outline: none; }
+        #send-btn { background: var(--primary); color: #fff; border: none; padding: 0 15px; border-radius: 6px; font-weight: bold; height: 40px; width: 70px; flex-shrink: 0;}
+    </style>
+</head>
+<body>
+    <div id="login-overlay">
+        <h2>🔒 验证</h2><br>
+        <input type="password" id="pwd-input" class="login-input" placeholder="密码">
+        <button onclick="doLogin()" class="login-btn">进入</button>
+    </div>
+
+    <div id="header">
+        <span style="width:30px"></span> <!-- 占位 -->
+        <span>小代说</span>
+        <span onclick="clearHistory()" style="font-size:12px;color:#999;cursor:pointer">清空</span>
+    </div>
+    
+    <div id="chat-box"></div>
+    
+    <div id="input-area">
+        <select id="person-select"><option value="">(我)</option><option value="悠悠">悠悠</option><option value="玥玥">玥玥</option><option value="乌萨奇">乌萨奇</option><option value="小鸟雷玥">小鸟雷玥</option></select>
+        <input type="text" id="msg-input" placeholder="输入消息..." enterkeyhint="send">
+        <button onclick="sendMsg()" id="send-btn">发送</button>
+    </div>
+
+    <script>
+        const API_URL = "https://tm-api.111312.xyz"; 
+        
+        let userPwd = localStorage.getItem("pwd") || "";
+        if(userPwd) { document.getElementById('login-overlay').classList.add('hidden'); startPolling(); }
+
+        const msgInput = document.getElementById('msg-input');
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', () => {
+                const box = document.getElementById('chat-box');
+                box.scrollTop = box.scrollHeight;
+            });
+        }
+        
+        msgInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendMsg();
+            }
+        });
+
+        function doLogin() {
+            userPwd = document.getElementById('pwd-input').value;
+            localStorage.setItem("pwd", userPwd);
+            document.getElementById('login-overlay').classList.add('hidden');
+            startPolling();
+        }
+
+        function startPolling() { loadHistory(); setInterval(loadHistory, 5000); }
+        
+        // 🌟 增量渲染消息历史，防止打断正在播放的音频
+        function loadHistory() {
+            fetch(API_URL + '/history').then(r=>r.json()).then(data => {
+                const box = document.getElementById('chat-box');
+                
+                // 处理清屏动作：如果接口返回空，而本地还有元素，说明被清空了
+                if (data.length === 0 && box.children.length > 0) {
+                    box.innerHTML = '';
+                    return;
+                }
+
+                let hasNewMsg = false;
+
+                data.forEach(msg => {
+                    // 只针对页面上还没出现的 ID 生成 DOM
+                    if (!document.getElementById('msg-' + msg.id)) {
+                        hasNewMsg = true;
+                        
+                        const div = document.createElement('div');
+                        div.id = 'msg-' + msg.id;
+                        div.className = 'message ' + msg.role;
+                        
+                        // 🌟 如果这套消息包含了录音链接，在上面生成播放器
+                        if (msg.audioUrl) {
+                            const audio = document.createElement('audio');
+                            audio.controls = true;
+                            audio.src = msg.audioUrl;
+                            audio.style.width = '100%';
+                            audio.style.height = '35px';
+                            audio.style.marginBottom = '5px';
+                            audio.style.outline = 'none';
+                            div.appendChild(audio);
+                            
+                            // 加上微信同款虚线
+                            const line = document.createElement('div');
+                            line.style.borderTop = '1px dashed #ccc';
+                            line.style.margin = '4px 0 8px 0';
+                            div.appendChild(line);
+                        }
+                        
+                        const textSpan = document.createElement('div');
+                        textSpan.innerText = msg.text;
+                        div.appendChild(textSpan);
+                        
+                        box.appendChild(div);
+                    }
+                });
+
+                // 有新消息才滚动到底部
+                if (hasNewMsg) box.scrollTop = box.scrollHeight;
+
+            }).catch(e => console.error(e));
+        }
+
+        async function sendMsg() {
+            const input = document.getElementById('msg-input');
+            const select = document.getElementById('person-select');
+            let rawText = input.value.trim();
+            if (!rawText) return;
+            
+            let finalMsg = select.value ? select.value + "，" + rawText : rawText;
+            const btn = document.getElementById('send-btn');
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(API_URL + '/send', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({password: userPwd, text: finalMsg})
+                });
+                const data = await res.json();
+                if(data.error) {
+                    alert("发送失败: " + JSON.stringify(data));
+                } else {
+                    input.value = '';
+                    loadHistory();
+                }
+            } catch (e) { alert("网络错误: " + e); } 
+            finally { btn.disabled = false; input.focus(); }
+        }
+        
+        function clearHistory() {
+            if(confirm("确定清空聊天记录吗？")) {
+                fetch(API_URL + '/clear', {method:'POST'}).then(() => {
+                    document.getElementById('chat-box').innerHTML = '';
+                });
+            }
+        }
+    </script>
+</body>
+</html>
