@@ -104,7 +104,7 @@ export async function onRequestPost(context) {
       const resp = await fetch(WEBHOOK, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ msgtype: "text", text: { title: title || "消息", content: text } })
+        body: JSON.stringify({ msgtype: "text", text: { content: text } })
       });
       data = await resp.json();
     } catch (e) {
