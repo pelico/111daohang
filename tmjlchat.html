@@ -163,7 +163,22 @@
 
                         if (msg.time) {
                             const timeSpan = document.createElement('div');
-                            timeSpan.innerText = msg.time;
+                            // 从 id 提取时间戳判断是否跨天
+                            const ts = parseInt(msg.id);
+                            let displayTime = msg.time;
+                            if (!isNaN(ts)) {
+                                const msgDate = new Date(ts);
+                                const now = new Date();
+                                const isSameDay = msgDate.getFullYear() === now.getFullYear() &&
+                                    msgDate.getMonth() === now.getMonth() &&
+                                    msgDate.getDate() === now.getDate();
+                                if (!isSameDay) {
+                                    const m = String(msgDate.getMonth() + 1).padStart(2, '0');
+                                    const d = String(msgDate.getDate()).padStart(2, '0');
+                                    displayTime = m + '/' + d + ' ' + msg.time;
+                                }
+                            }
+                            timeSpan.innerText = displayTime;
                             timeSpan.style.fontSize = '11px';
                             timeSpan.style.color = '#999';
                             timeSpan.style.marginTop = '4px';
