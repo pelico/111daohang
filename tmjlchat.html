@@ -160,7 +160,17 @@
                         const textSpan = document.createElement('div');
                         textSpan.innerText = msg.text;
                         div.appendChild(textSpan);
-                        
+
+                        if (msg.time) {
+                            const timeSpan = document.createElement('div');
+                            timeSpan.innerText = msg.time;
+                            timeSpan.style.fontSize = '11px';
+                            timeSpan.style.color = '#999';
+                            timeSpan.style.marginTop = '4px';
+                            timeSpan.style.textAlign = 'right';
+                            div.appendChild(timeSpan);
+                        }
+
                         box.appendChild(div);
                     }
                 });
