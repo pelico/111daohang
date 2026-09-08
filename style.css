@@ -93,7 +93,7 @@ body { background: var(--background); min-height: 100vh; padding: 20px; color: v
 .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .chart-title { font-size: 18px; font-weight: 600; }
 .chart-wrapper { height: 300px; position: relative; }
-.section-title { font-size: 24px; font-weight: 600; margin-bottom: 25px; margin-top: 10px; display: flex; align-items: center; gap: 12px; color: var(--primary-dark); padding-bottom: 15px; border-bottom: 1px solid var(--border-color); }
+.section-title { font-size: 24px; font-weight: 600; margin-bottom: 25px; margin-top: 10px; display: flex; align-items: center; gap: 12px; color: rgba(255, 255, 255, 0.95); text-shadow: 0 2px 8px rgba(0,0,0,0.2); padding-bottom: 15px; border-bottom: 1px solid rgba(255, 255, 255, 0.3); }
 .nas-section { margin-bottom: 40px; }
 .nas-chart-wrapper { height: 250px; position: relative; }
 .detail-chart-container { margin-top: 25px; height: 250px; }
