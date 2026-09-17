@@ -97,27 +97,36 @@ body { background: var(--background); min-height: 100vh; padding: 20px; color: v
 .nas-section { margin-bottom: 40px; }
 .nas-chart-wrapper { height: 250px; position: relative; }
 .detail-chart-container { margin-top: 25px; height: 250px; }
+.nas-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; padding: 12px 20px; background: var(--card-bg); border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+.nas-dev-checks { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.nas-dev-check { display: inline-flex; align-items: center; gap: 5px; font-size: 0.9rem; color: var(--text-color); cursor: pointer; }
+.nas-dev-check input { width: 16px; height: 16px; accent-color: var(--primary-color); cursor: pointer; }
+.nas-range-group { display: flex; gap: 6px; }
+.nas-range-btn { padding: 6px 14px; font-size: 0.85rem; font-weight: 500; border: 1px solid var(--border-color); border-radius: 8px; background: #f8f9fa; color: var(--text-light); cursor: pointer; transition: all 0.2s; }
+.nas-range-btn:hover { border-color: var(--primary-color); color: var(--primary-color); }
+.nas-range-btn.active { background: var(--primary-color); color: #fff; border-color: var(--primary-color); }
+.nas-empty-text { text-align: center; padding: 30px; color: var(--text-light); grid-column: 1 / -1; }
 
 /* --- Tab 3: 我的通知 --- */
-#notifications-list { min-height: 200px; padding: 10px; }
-.notification-item { padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: flex-start; }
+#notifications-list { min-height: 200px; padding: 0; }
+.notification-item { padding: 14px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: flex-start; }
 .notification-item:last-child { border-bottom: none; }
-.notification-content { flex-grow: 1; margin-right: 15px; word-break: break-word; }
-.notification-timestamp { font-size: 0.85em; color: var(--text-light); white-space: nowrap; margin-top: 2px; }
+.notification-content { flex-grow: 1; margin-right: 15px; word-break: break-word; font-size: 0.95rem; }
+.notification-timestamp { font-size: 0.8em; color: var(--text-light); white-space: nowrap; margin-top: 2px; }
 #notifications-status-message { text-align: center; margin-top: 15px; }
 .status-msg { font-size: 0.9em; padding: 8px 12px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; }
 .status-msg.success { color: var(--success-color); background-color: rgba(46, 204, 113, 0.1); }
 .status-msg.error { color: var(--danger-color); background-color: rgba(231, 76, 60, 0.1); }
 
 /* --- Tab 4: 天气仪表盘 --- */
-#latest-weather-cards { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin-bottom: 40px; }
-.weather-card { background: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 20px; flex-grow: 1; min-width: 280px; text-align: center; }
-.weather-card h2 { margin-top: 0; color: var(--primary-color); font-size: 1.8em; }
-.weather-card p { margin: 8px 0; font-size: 1.1em; }
-.weather-card .weather-text { font-size: 1.4em; font-weight: bold; color: #2c3e50; }
+#latest-weather-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px; }
+.weather-card { background: var(--card-bg); border-radius: 16px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08); padding: 25px; text-align: center; }
+.weather-card h2 { margin-top: 0; color: var(--primary-color); font-size: 1.5rem; }
+.weather-card p { margin: 6px 0; font-size: 1rem; }
+.weather-card .weather-text { font-size: 1.3em; font-weight: 600; color: var(--text-color); }
 .weather-card .timestamp { font-size: 0.8em; color: var(--text-light); }
-#weather-charts-container { display: flex; flex-direction: column; gap: 40px; align-items: center; }
-.weather-chart-container { width: 100%; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+#weather-charts-container { display: flex; flex-direction: column; gap: 25px; align-items: center; }
+.weather-chart-container { width: 100%; background: var(--card-bg); padding: 25px; border-radius: 16px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08); }
 
 /* --- 通用状态 (加载/空/错误) --- */
 .loading-state, .empty-state, .error-state { text-align: center; padding: 40px 20px; color: var(--text-light); }
@@ -223,10 +232,11 @@ footer { text-align: center; margin-top: 60px; padding: 25px; color: rgba(255, 2
     .detail-chart-container { height: 180px; }
     .chart-container { padding: 15px; }
     .nav-links { grid-template-columns: 1fr; }
-    .nas-range-bar { flex-wrap: wrap; gap: 5px; }
+    .nas-toolbar { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; }
+    .nas-dev-checks { gap: 6px; }
+    .nas-dev-check { font-size: 0.8rem; }
     .nas-range-btn { padding: 4px 10px; font-size: 0.8rem; }
-    .nas-device-selector { flex-wrap: wrap; gap: 5px; }
-    .nas-device-chip { padding: 4px 10px; font-size: 0.8rem; }
+    #latest-weather-cards { grid-template-columns: 1fr; }
 }
 
 /* --- 小屏手机 (≤480px) 进一步压缩 --- */
