@@ -141,6 +141,7 @@ async function ingestOne(url, env, nowMs) {
 		mem: m.memPct == null ? null : round(m.memPct, 1),
 		up: round(upBps), down: round(downBps),
 		temp: m.temp == null ? null : round(m.temp, 1),
+		fs: m.fs.total > 0 ? { total: Math.round(m.fs.total), avail: Math.round(m.fs.avail) } : null,
 	}));
 
 	// 更新设备列表 + 元数据（KV，前端 index/realtime 读 device:list 和 dev:meta）

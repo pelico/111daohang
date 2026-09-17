@@ -574,14 +574,16 @@ document.addEventListener('DOMContentLoaded', function() {
             register: '/api/nas/register',
             unregister: '/api/nas/unregister'
         };
-        const NAS_POLL_INTERVAL = 3000;     // 前台 3s：probe 即时抓源，前端差分算速率/CPU
+        const NAS_POLL_INTERVAL = 5000;     // 前台 5s：probe 即时抓源，前端差分算速率/CPU
         const NAS_POLL_BACKGROUND = 60000;  // 后台/隐藏 60s：改读 KV 快照，省资源
         const originalTitle = document.title;
 
         let realtimeTimer = null;
         let currentPollInterval = NAS_POLL_INTERVAL;
-        let nasDevices = [];                 // [{device_id,url,ts,cpu,mem,up,down,temp}]
+        let nasDevices = [];                 // [{device_id,url,ts,cpu,mem,up,down,temp,fs}]
         let totalSpeeds = { up: 0, down: 0 };
+        let probeLast = {};                  // device_id -> { ts, bootTime, cpuIdle, cpuTotal, netRecv, netSent }
+        let usingProbe = true;               // 前台=true 用 probe，后台=false 用 realtime
 
         // ============ NAS 格式工具（实时卡片/标题用） ============
         function nas_formatSize(bytes, sizes, decimals = 1) {
@@ -609,7 +611,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const tempTile = (dev.temp != null)
                 ? `<div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-thermometer-half"></i></div><div class="nas-metric-details"><span class="nas-metric-label">温度</span><div class="nas-metric-value">${Number(dev.temp).toFixed(1)}°C</div></div></div>`
                 : '';
-            return `<div class="nas-card-container" data-device="${escapeHtml(dev.device_id||'')}" data-url="${escapeHtml(dev.url||'')}"> <div style="font-weight: bold; color: var(--primary-dark); margin-bottom: 15px; text-align: center;">${label}</div> <div class="nas-card-grid"> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-microchip"></i></div><div class="nas-metric-details"><span class="nas-metric-label">CPU</span><div class="nas-metric-value">${dev.cpu==null?'--':Number(dev.cpu).toFixed(1)+'%'}</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-memory"></i></div><div class="nas-metric-details"><span class="nas-metric-label">内存</span><div class="nas-metric-value">${dev.mem==null?'--':Number(dev.mem).toFixed(1)+'%'}</div></div></div> ${tempTile} <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-exchange-alt"></i></div><div class="nas-metric-details"><span class="nas-metric-label">上传/下载</span><div class="nas-metric-value small-font">${nas_formatSpeed(dev.up||0)} / ${nas_formatSpeed(dev.down||0)}</div></div></div> </div> <div class="nas-status-footer"><span class="nas-status-text">${dev.ts?('更新: '+new Date(dev.ts*1000).toLocaleTimeString()):'等待数据...'}</span></div> </div>`;
+            const fsPct = (dev.fs && dev.fs.total > 0) ? ((dev.fs.total - dev.fs.avail) / dev.fs.total * 100) : null;
+            const fsTile = (fsPct != null)
+                ? `<div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-hdd"></i></div><div class="nas-metric-details"><span class="nas-metric-label">存储</span><div class="nas-metric-value">${fsPct.toFixed(1)}%</div></div></div>`
+                : '';
+            return `<div class="nas-card-container" data-device="${escapeHtml(dev.device_id||'')}" data-url="${escapeHtml(dev.url||'')}"> <div style="font-weight: bold; color: var(--primary-dark); margin-bottom: 15px; text-align: center;">${label}</div> <div class="nas-card-grid"> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-microchip"></i></div><div class="nas-metric-details"><span class="nas-metric-label">CPU</span><div class="nas-metric-value">${dev.cpu==null?'--':Number(dev.cpu).toFixed(1)+'%'}</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-memory"></i></div><div class="nas-metric-details"><span class="nas-metric-label">内存</span><div class="nas-metric-value">${dev.mem==null?'--':Number(dev.mem).toFixed(1)+'%'}</div></div></div> ${tempTile} ${fsTile} <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-exchange-alt"></i></div><div class="nas-metric-details"><span class="nas-metric-label">上传/下载</span><div class="nas-metric-value small-font">${nas_formatSpeed(dev.up||0)} / ${nas_formatSpeed(dev.down||0)}</div></div></div> </div> <div class="nas-status-footer"><span class="nas-status-text">${dev.ts?('更新: '+new Date(dev.ts*1000).toLocaleTimeString()):'等待数据...'}</span></div> </div>`;
         }
         function renderRealtimeCards() {
             const container = document.getElementById('nas-grid-container');
@@ -622,7 +628,72 @@ document.addEventListener('DOMContentLoaded', function() {
             if (document.hidden) return;
             document.title = `↑${nas_formatSpeed(totalSpeeds.up,1)} / ↓${nas_formatSpeed(totalSpeeds.down,1)} | ${originalTitle}`;
         }
-        async function updateRealtime() {
+        // 前台 probe：即时抓源 + 前端差分算速率/CPU，不写 DB
+        async function updateViaProbe() {
+            try {
+                const res = await fetchWithTimeout(NAS_API.probe, { cache: 'no-store' }, 15000);
+                if (!res.ok) throw new Error(`probe ${res.status}`);
+                const data = await res.json();
+                const devices = (data && Array.isArray(data.devices)) ? data.devices : [];
+
+                const merged = devices.map(dev => {
+                    const prev = probeLast[dev.device_id];
+                    let cpuPct = null, upSpeed = 0, downSpeed = 0;
+
+                    if (prev && dev.bootTime === prev.bootTime) {
+                        const dt = dev.ts - prev.ts;
+                        if (dt > 0) {
+                            if (dev.cpu.idleValid && prev.cpuIdle > 0 && dev.cpu.total > prev.cpuTotal) {
+                                const idleDiff = dev.cpu.idle - prev.cpuIdle;
+                                const totalDiff = dev.cpu.total - prev.cpuTotal;
+                                if (totalDiff > 0) cpuPct = Math.max(0, Math.min(100, 100 * (1 - idleDiff / totalDiff)));
+                            }
+                            try {
+                                const recvNew = BigInt(dev.net.recv), recvOld = BigInt(prev.netRecv);
+                                if (recvNew >= recvOld) downSpeed = Number(recvNew - recvOld) / dt;
+                            } catch(e) {}
+                            try {
+                                const sentNew = BigInt(dev.net.sent), sentOld = BigInt(prev.netSent);
+                                if (sentNew >= sentOld) upSpeed = Number(sentNew - sentOld) / dt;
+                            } catch(e) {}
+                        }
+                    }
+
+                    probeLast[dev.device_id] = {
+                        ts: dev.ts,
+                        bootTime: dev.bootTime,
+                        cpuIdle: dev.cpu.idle,
+                        cpuTotal: dev.cpu.total,
+                        netRecv: dev.net.recv,
+                        netSent: dev.net.sent,
+                    };
+
+                    return {
+                        device_id: dev.device_id,
+                        url: dev.url,
+                        ts: dev.ts,
+                        cpu: cpuPct != null ? Math.round(cpuPct * 10) / 10 : null,
+                        mem: dev.mem,
+                        memTotal: dev.memTotal || 0,
+                        up: Math.round(upSpeed),
+                        down: Math.round(downSpeed),
+                        temp: dev.temp,
+                        fs: dev.fs || null,
+                    };
+                });
+
+                nasDevices = merged;
+                renderRealtimeCards();
+                totalSpeeds = { up: 0, down: 0 };
+                merged.forEach(d => { totalSpeeds.up += d.up || 0; totalSpeeds.down += d.down || 0; });
+                updatePageTitle();
+            } catch (e) {
+                if (e.name === 'AbortError') return;
+                console.error('NAS probe 刷新失败:', e);
+            }
+        }
+        // 后台 snapshot：读 KV 快照（已有速率，零计算）
+        async function updateViaSnapshot() {
             try {
                 const devs = await fetchRealtime();
                 nasDevices = devs;
@@ -637,17 +708,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         function startRealtime() {
             if (realtimeTimer) clearInterval(realtimeTimer);
-            updateRealtime();
-            realtimeTimer = setInterval(updateRealtime, currentPollInterval);
+            const fn = usingProbe ? updateViaProbe : updateViaSnapshot;
+            fn();
+            realtimeTimer = setInterval(fn, currentPollInterval);
         }
-        // P1-6: 页面可见性变化时调整轮询频率
+        // 页面可见性变化：前台用 probe(5s)，后台用 snapshot(60s)
         function onVisibilityChange() {
             if (document.hidden) {
                 if (document.title !== originalTitle) document.title = originalTitle;
-                if (currentPollInterval !== NAS_POLL_BACKGROUND) { currentPollInterval = NAS_POLL_BACKGROUND; startRealtime(); }
+                if (usingProbe || currentPollInterval !== NAS_POLL_BACKGROUND) {
+                    usingProbe = false;
+                    currentPollInterval = NAS_POLL_BACKGROUND;
+                    startRealtime();
+                }
             } else {
-                if (currentPollInterval !== NAS_POLL_INTERVAL) { currentPollInterval = NAS_POLL_INTERVAL; startRealtime(); }
-                else updatePageTitle();
+                if (!usingProbe || currentPollInterval !== NAS_POLL_INTERVAL) {
+                    usingProbe = true;
+                    currentPollInterval = NAS_POLL_INTERVAL;
+                    startRealtime();
+                } else updatePageTitle();
             }
         }
         document.addEventListener('visibilitychange', onVisibilityChange);
@@ -711,7 +790,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (r.ok) {
                     urlInput.value = '';
                     renderUrlListInModal();
-                    updateRealtime();
+                    usingProbe ? updateViaProbe() : updateViaSnapshot();
                     if (typeof loadNasMonitoring === 'function') loadNasMonitoring();
                 } else {
                     alert('登记失败: ' + (r.error || '未知错误'));
@@ -723,7 +802,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const deviceId = btn.getAttribute('data-device');
                 await postJson(NAS_API.unregister, { device_id: deviceId });
                 renderUrlListInModal();
-                updateRealtime();
+                usingProbe ? updateViaProbe() : updateViaSnapshot();
                 if (typeof loadNasMonitoring === 'function') loadNasMonitoring();
             });
         }

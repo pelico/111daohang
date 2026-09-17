@@ -35,7 +35,9 @@ export async function onRequestGet(ctx) {
 				cpu: { idle: m.cpu.idle, total: m.cpu.total, idleValid: !!(m.cpu.idleValid && m.cpu.total > 0) },
 				net: { recv: String(m.net.recv), sent: String(m.net.sent) },
 				mem: m.memPct == null ? null : Math.round(m.memPct * 10) / 10,
+				memTotal: m.memTotal || 0,
 				temp: m.temp == null ? null : Math.round(m.temp * 10) / 10,
+				fs: m.fs.total > 0 ? { total: Math.round(m.fs.total), avail: Math.round(m.fs.avail) } : null,
 			};
 		} catch (e) {
 			return null;

@@ -9,9 +9,9 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 METRICS_URL = "https://wkyapi.111312.xyz/metrics"
 
-# 每 60 秒触发一次采样
+# 每 5 分钟触发一次采样（降低免费额度消耗，趋势图精度足够）
 [triggers]
-crons = ["* * * * *"]
+crons = ["*/5 * * * *"]
 
 # D1：历史采样
 [[d1_databases]]

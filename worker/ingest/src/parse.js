@@ -4,6 +4,7 @@
  * - 只解析所需行，降低解析开销。
  */
 const IGNORED_IFACE = /^(lo|veth|docker0|tailscale0)/;
+const PSEUDO_FS = /^(tmpfs|devtmpfs|overlay|squashfs|proc|sysfs|cgroup|cgroup2|mqueue|devpts|fuse\.lxcfs|nsfs|autofs|binfmt_misc|rpc_pipefs|9p|ceph|fuse\.overlayfs)/;
 
 export function parseVmMetrics(text) {
 	const out = {
@@ -15,9 +16,11 @@ export function parseVmMetrics(text) {
 		memPct: null,
 		temp: null,
 		net: { recv: 0n, sent: 0n },   // 选中的主网卡累计字节（BigInt）
+		fs: { total: 0, avail: 0 },   // 根分区（或最大真实分区）存储
 	};
 
 	const netRaw = {}; // iface -> {recvBig, sentBig}
+	const fsRaw = {}; // mountpoint -> { total, avail }
 
 	for (const line of text.split('\n')) {
 		if (!line || line.charCodeAt(0) === 35) continue; // 空行 / #
@@ -61,6 +64,18 @@ export function parseVmMetrics(text) {
 		if (out.temp === null && (line.startsWith('node_thermal_zone_temp') || line.startsWith('node_hwmon_temp_input'))) {
 			out.temp = toNumber(line);
 		}
+		// 存储
+		if (line.startsWith('node_filesystem_size_bytes') || line.startsWith('node_filesystem_avail_bytes')) {
+			const ft = line.match(/fstype="([^"]+)"/);
+			if (ft && PSEUDO_FS.test(ft[1])) continue;
+			const mp = line.match(/mountpoint="([^"]+)"/);
+			if (!mp) continue;
+			const mountpoint = mp[1];
+			if (!fsRaw[mountpoint]) fsRaw[mountpoint] = { total: 0, avail: 0 };
+			if (line.startsWith('node_filesystem_size_bytes')) fsRaw[mountpoint].total = toNumber(line, 0);
+			else fsRaw[mountpoint].avail = toNumber(line, 0);
+			continue;
+		}
 	}
 
 	// 网络：优先 WAN 网卡(eth/enp/ens/eno/wl/wlan)，避免 docker 桥(br-/veth/…)重复计入；无 WAN 则综合非忽略口
@@ -70,6 +85,18 @@ export function parseVmMetrics(text) {
 	for (const d of (wanSet.length ? wanSet : nonIgnored)) {
 		out.net.recv += netRaw[d].recv;
 		out.net.sent += netRaw[d].sent;
+	}
+
+	// 存储：优先根分区，无根分区取最大真实分区
+	const rootFs = fsRaw['/'];
+	let bestFs = rootFs || null;
+	if (!bestFs) {
+		for (const mp of Object.keys(fsRaw)) {
+			if (!bestFs || fsRaw[mp].total > bestFs.total) bestFs = fsRaw[mp];
+		}
+	}
+	if (bestFs && bestFs.total > 0) {
+		out.fs = { total: bestFs.total, avail: bestFs.avail };
 	}
 
 	if (out.memTotal > 0) {
