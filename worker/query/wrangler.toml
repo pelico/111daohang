@@ -1,0 +1,16 @@
+name = "nas-query"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+[vars]
+# 前缀保留：同域名 API 收敛时使用
+ROUTES = "/nas/realtime,/nas/history,/health"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nas-metrics"
+database_id = "YOUR_D1_DATABASE_ID"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "YOUR_KV_NAMESPACE_ID"

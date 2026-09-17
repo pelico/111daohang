@@ -1,0 +1,28 @@
+name = "nas-ingest"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+# 阶段 1：先跑通单设备。配置一个源即可。
+# 若设置了 METRICS_URL，仅采集该源；未设置时从 KV device:list 读取多源（阶段3准备）
+[vars]
+METRICS_URL = ""
+INGEST_INTERVAL_SEC = "60"
+
+# 每 60 秒触发一次采样
+[triggers]
+crons = ["* * * * *"]
+
+# D1：历史采样
+[[d1_databases]]
+binding = "DB"
+database_name = "nas-metrics"      # 改成你的 D1 数据库名
+database_id = "YOUR_D1_DATABASE_ID"  # 部署前填写 D1 的 database_id
+
+# KV：实时快照 + 设备注册表
+[[kv_namespaces]]
+binding = "KV"
+id = "YOUR_KV_NAMESPACE_ID"
+
+# 允许 ingest 去拉各 metrics 源
+[env]
