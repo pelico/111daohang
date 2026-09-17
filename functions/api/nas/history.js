@@ -34,7 +34,7 @@ export async function onRequestGet(ctx) {
 				 WHERE device_id IN (${place}) AND ts >= ? AND ts <= ?
 				 GROUP BY device_id, CAST(ts / ? AS INTEGER)
 				 ORDER BY ts ASC`
-			).bind(...devices, start, nowSec, bucket).all()).results;
+			).bind(...devices, start, nowSec, bucket, bucket).all()).results;
 		} catch (e) {
 			return json({ ts: nowSec, error: 'db_error', message: (e && e.message) || String(e) }, 500);
 		}
