@@ -484,7 +484,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const DEFAULT_NAS_URLS = [
             'https://nas-api.111312.xyz/metrics',
             'https://wkyapi.111312.xyz/metrics',
-            'https://macapi.111312.xyz/metrics'
+            'https://macapi.111312.xyz/metrics',
+            'https://btmapi.111312.xyz/metrics'
         ];
 
         // P0-3 / P1-6: 预编译正则（热路径不重复编译）
