@@ -17,7 +17,6 @@ export function parseVmMetrics(text) {
 		net: { recv: 0n, sent: 0n },   // 选中的主网卡累计字节（BigInt）
 	};
 
-	let primaryIface = null;
 	const netRaw = {}; // iface -> {recvBig, sentBig}
 
 	for (const line of text.split('\n')) {
@@ -64,14 +63,12 @@ export function parseVmMetrics(text) {
 		}
 	}
 
-	// 挑主网卡：非忽略接口优先，缺省 eth0
+	// 网络：汇总所有非忽略网卡（loopback/veth/docker0/tailscale0 除外）。
+	// 避免只挑一块"无流量口"导致速率恒为 0。
 	for (const d in netRaw) {
-		if (!IGNORED_IFACE.test(d)) { primaryIface = d; break; }
-	}
-	if (!primaryIface && netRaw['eth0']) primaryIface = 'eth0';
-	if (primaryIface) {
-		out.net.recv = netRaw[primaryIface].recv;
-		out.net.sent = netRaw[primaryIface].sent;
+		if (IGNORED_IFACE.test(d)) continue;
+		out.net.recv += netRaw[d].recv;
+		out.net.sent += netRaw[d].sent;
 	}
 
 	if (out.memTotal > 0) {

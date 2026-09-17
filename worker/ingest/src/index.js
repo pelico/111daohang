@@ -87,10 +87,8 @@ async function ingestOne(url, env, nowMs) {
 	const m = parseVmMetrics(text);
 
 	const nowSec = Math.floor(nowMs / 1000);
-	// 设备号：优先真实主机名，缺失用链接 host 兜底（换域名仍识别为同一台）
-	const deviceId = m.hostname
-		? `${m.hostname}`.toLowerCase().replace(/[^a-z0-9_.-]/g, '_')
-		: new URL(url).hostname;
+	// 设备号：优先真实主机名；若为泛化名（node_exporter/docker 等容器环境）则改用链接 host 主标签
+	const deviceId = deviceIdFor(url, m.hostname);
 
 	// 读取上次基准（原始计数器 + 采样时间）
 	const prev = (await env.KV.get(`dev:prev:${deviceId}`, 'json')) || null;
@@ -155,6 +153,17 @@ async function ingestOne(url, env, nowMs) {
 
 	// 写前兜底滚动删除（与 Cron 双保险；见下方 dailyCleanup）
 	await maybeCleanup(env, nowSec);
+}
+
+// 生成稳定的设备标识：真实主机名优先，泛化/缺失时用链接 host 主标签（wkyapi.111312.xyz -> wkyapi）
+function deviceIdFor(url, hostname) {
+	const sanitize = s => s.toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
+	if (hostname && !/^(node_exporter|localhost|docker|gateway|unraid)$/i.test(hostname)) {
+		const clean = sanitize(hostname);
+		if (clean) return clean;
+	}
+	const h = sanitize(new URL(url).hostname);
+	return h.split('.')[0] || h;
 }
 
 // 用原始计数差值算速率（B/s）；异常（绕回/为负）返回 0，不污染图表
