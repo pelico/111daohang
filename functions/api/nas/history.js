@@ -19,28 +19,38 @@ export async function onRequestGet(ctx) {
 
 	if (devices.length > 0) {
 		const place = devices.map(() => '?').join(',');
-		const rows = (await env.DB.prepare(
-			`SELECT device_id,
-			        CAST(ts / ? AS INTEGER) AS bucket,
-			        MIN(ts) AS ts,
-			        ROUND(AVG(cpu),1) cpu,
-			        ROUND(AVG(mem),1) mem,
-			        ROUND(AVG(up_bps)) up,
-			        ROUND(AVG(down_bps)) down,
-			        ROUND(AVG(temp),1) temp
-			 FROM samples
-			 WHERE device_id IN (${place}) AND ts >= ? AND ts <= ?
-			 GROUP BY device_id, CAST(ts / ? AS INTEGER)
-			 ORDER BY ts ASC`
-		).bind(...devices, start, nowSec, bucket).all()).results;
+		let rows;
+		try {
+			rows = (await env.DB.prepare(
+				`SELECT device_id,
+				        CAST(ts / ? AS INTEGER) AS bucket,
+				        MIN(ts) AS ts,
+				        ROUND(AVG(cpu),1) cpu,
+				        ROUND(AVG(mem),1) mem,
+				        ROUND(AVG(up_bps)) up,
+				        ROUND(AVG(down_bps)) down,
+				        ROUND(AVG(temp),1) temp
+				 FROM samples
+				 WHERE device_id IN (${place}) AND ts >= ? AND ts <= ?
+				 GROUP BY device_id, CAST(ts / ? AS INTEGER)
+				 ORDER BY ts ASC`
+			).bind(...devices, start, nowSec, bucket).all()).results;
+		} catch (e) {
+			return json({ ts: nowSec, error: 'db_error', message: (e && e.message) || String(e) }, 500);
+		}
 		return json({ ts: nowSec, range, bucket, devices, points: rows });
 	}
 
 	// 设备索引：最近活跃设备及其采样数
-	const list = (await env.DB.prepare(
-		`SELECT device_id, MAX(ts) AS last_seen, COUNT(*) AS n
-		 FROM samples WHERE ts >= ? GROUP BY device_id`
-	).bind(start).all()).results;
+	let list;
+	try {
+		list = (await env.DB.prepare(
+			`SELECT device_id, MAX(ts) AS last_seen, COUNT(*) AS n
+			 FROM samples WHERE ts >= ? GROUP BY device_id`
+		).bind(start).all()).results;
+	} catch (e) {
+		return json({ ts: nowSec, error: 'db_error', message: (e && e.message) || String(e) }, 500);
+	}
 	return json({ ts: nowSec, range, mode: 'index', devices: list });
 }
 
