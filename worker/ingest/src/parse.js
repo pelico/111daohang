@@ -63,10 +63,11 @@ export function parseVmMetrics(text) {
 		}
 	}
 
-	// 网络：汇总所有非忽略网卡（loopback/veth/docker0/tailscale0 除外）。
-	// 避免只挑一块"无流量口"导致速率恒为 0。
-	for (const d in netRaw) {
-		if (IGNORED_IFACE.test(d)) continue;
+	// 网络：优先 WAN 网卡(eth/enp/ens/eno/wl/wlan)，避免 docker 桥(br-/veth/…)重复计入；无 WAN 则综合非忽略口
+	const WAN_IFACE = /^(eth|enp|ens|eno|wl|wlan)\d/;
+	const nonIgnored = Object.keys(netRaw).filter(d => !IGNORED_IFACE.test(d));
+	const wanSet = nonIgnored.filter(d => WAN_IFACE.test(d));
+	for (const d of (wanSet.length ? wanSet : nonIgnored)) {
 		out.net.recv += netRaw[d].recv;
 		out.net.sent += netRaw[d].sent;
 	}
@@ -78,13 +79,38 @@ export function parseVmMetrics(text) {
 	return out;
 }
 
-// 转 BigInt：Scientific/整数均可；失败归 0n。用于不可能溢出的计数器
+// 转 BigInt：支持科学计数法（如 5.37e+09）与普通整数；失败归 0n。用于不会溢出的计数器
 function toBig(line, fallback = 0n) {
 	const sp = line.lastIndexOf(' ');
-	let s = sp >= 0 ? line.slice(sp + 1) : line;
+	const s = (sp >= 0 ? line.slice(sp + 1) : line).trim();
+	if (!s) return fallback;
+	try {
+		return bigIntFromMetric(s);
+	} catch (e) { return fallback; }
+}
+
+// 将 prometheus 数值（整数或科学计数法）精确转成 BigInt，不丢精度
+function bigIntFromMetric(s) {
+	let neg = false, exp = 0;
 	s = s.trim();
-	if (!s || /\D/.test(s) || s === '') return fallback;
-	try { return BigInt(s); } catch (e) { return fallback; }
+	if (s[0] === '-') { neg = true; s = s.slice(1); }
+	else if (s[0] === '+') { s = s.slice(1); }
+	const e = s.search(/[eE]/);
+	if (e !== -1) { exp = parseInt(s.slice(e + 1), 10) || 0; s = s.slice(0, e); }
+	const dot = s.indexOf('.');
+	let intPart = s, frac = '';
+	if (dot !== -1) { intPart = s.slice(0, dot); frac = s.slice(dot + 1); }
+	let digits = intPart + frac;
+	const shift = exp - frac.length; // 小数点移动量
+	if (shift >= 0) {
+		digits += '0'.repeat(shift);
+	} else {
+		const cut = -shift;
+		if (cut >= digits.length) return 0n;
+		digits = digits.slice(0, digits.length - cut);
+	}
+	const v = BigInt(digits || '0');
+	return neg ? -v : v;
 }
 
 function toNumber(line, fallback = 0) {
