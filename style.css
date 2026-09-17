@@ -166,7 +166,9 @@ footer { text-align: center; margin-top: 60px; padding: 25px; color: rgba(255, 2
 .nas-metric-value { font-size: 1.3em; font-weight: 600; color: var(--text-color); }
 .nas-metric-value.small-font { font-size: 1em; }
 .nas-metric-subvalue { font-size: 0.8em; color: var(--text-light); margin-top: 4px; }
-.nas-status-footer { text-align: right; margin-top: 10px; font-size: 0.75em; color: var(--text-light); }
+.nas-card-header { position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 15px; min-height: 20px; }
+.nas-card-title { font-weight: bold; color: var(--primary-dark); }
+.nas-card-updated { position: absolute; right: 0; top: 50%; transform: translateY(-50%); font-size: 0.72em; color: var(--text-light); white-space: nowrap; }
 .nas-error { color: var(--danger-color); }
 
 /* --- 设置图标和弹窗 --- */
@@ -290,6 +292,7 @@ footer { text-align: center; margin-top: 60px; padding: 25px; color: rgba(255, 2
     .nas-metric-value { font-size: 0.95em; }
     .nas-metric-value.small-font { font-size: 0.75em; }
     .nas-status-footer { font-size: 0.65em; margin-top: 6px; }
+    .nas-card-updated { font-size: 0.62em; }
     .nas-card-container > div:first-child { font-size: 0.85rem; margin-bottom: 8px; }
     .settings-icon { width: 36px; height: 36px; font-size: 16px; }
     footer { padding: 15px; font-size: 0.8rem; margin-top: 30px; }
