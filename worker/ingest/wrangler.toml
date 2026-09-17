@@ -3,8 +3,9 @@ main = "src/index.js"
 compatibility_date = "2025-06-01"
 compatibility_flags = ["nodejs_compat"]
 
-# 阶段 1：先跑通单设备。配置一个源即可。
-# 若设置了 METRICS_URL，仅采集该源；未设置时从 KV device:list 读取多源（阶段3准备）
+# 多源自动接入（阶段三）：
+# - 每轮采样会把 KV device:list 里登记的所有 metrics 源全部抓取（设置弹窗添加的链接自动进来）。
+# - vars.METRICS_URL 仅作"默认/保底源"：为空时自动注册为第一个长驻源；也可留空，完全由前端添加驱动多源。
 [vars]
 METRICS_URL = "https://wkyapi.111312.xyz/metrics"
 

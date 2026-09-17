@@ -89,8 +89,9 @@ async function ingestOne(url, env, nowMs) {
 	const m = parseVmMetrics(text);
 
 	const nowSec = Math.floor(nowMs / 1000);
-	// 设备号：优先真实主机名；若为泛化名（node_exporter/docker 等容器环境）则改用链接 host 主标签
-	const deviceId = deviceIdFor(url, m.hostname);
+	// 设备号：若该 URL 已在寄存器登记过（设置弹窗添加），沿用其 id 保持前后台一致；
+	// 否则优先真实主机名，泛化名（node_exporter/docker 容器环境）时改用链接 host 主标签
+	const deviceId = await deviceIdForUrl(env, url, m.hostname);
 
 	// 读取上次基准（原始计数器 + 采样时间）
 	const prev = (await env.KV.get(`dev:prev:${deviceId}`, 'json')) || null;
@@ -157,7 +158,21 @@ async function ingestOne(url, env, nowMs) {
 	await maybeCleanup(env, nowSec);
 }
 
-// 生成稳定的设备标识：真实主机名优先，泛化/缺失时用链接 host 主标签（wkyapi.111312.xyz -> wkyapi）
+// 生成稳定的设备标识：优先复用寄存器里已登记的 id（保证前后台一致），否则用真实主机名，泛化时用链接 host 主标签
+async function deviceIdForUrl(env, url, hostname) {
+	const raw = await env.KV.get('device:list', 'text');
+	if (raw) {
+		let ids = [];
+		try { ids = JSON.parse(raw); } catch (e) {}
+		for (const id of ids) {
+			if (typeof id !== 'string') continue;
+			const m = await env.KV.get(`dev:meta:${id}`, 'json');
+			if (m && m.url === url) return id;
+		}
+	}
+	return deviceIdFor(url, hostname);
+}
+
 function deviceIdFor(url, hostname) {
 	const sanitize = s => s.toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
 	if (hostname && !/^(node_exporter|localhost|docker|gateway|unraid)$/i.test(hostname)) {
