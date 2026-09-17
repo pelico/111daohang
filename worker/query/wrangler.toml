@@ -8,9 +8,9 @@ ROUTES = "/nas/realtime,/nas/history,/health"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "nas-metrics"
-database_id = "YOUR_D1_DATABASE_ID"
+database_name = "nas-history"
+database_id = "1f47dbb7-388e-4544-ad01-84e62a904dfe"
 
 [[kv_namespaces]]
 binding = "KV"
-id = "YOUR_KV_NAMESPACE_ID"
+id = "902cef368819436a96c20163cb9eacd6"
