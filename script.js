@@ -247,10 +247,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     async function initMonitoring() {
         const container = document.getElementById('tab-monitoring');
-        if (container) container.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><p>正在加载服务监控数据...</p></div>`;
+        if (container) container.innerHTML = `<div class="loading-state" id="mon-loading"><div class="loading-spinner"></div><p>正在加载服务监控数据...</p></div>`;
+        const hideLoading = () => document.getElementById('mon-loading')?.remove();
         try {
             // NAS 历史：走本站 Pages Function 内部流转（多设备勾选 + 范围切换）
             await loadNasMonitoring();
+            // 核心 NAS 区块已渲染，先撤掉 loading，避免一直挂转圈
+            hideLoading();
             // UptimeRobot 网站服务监控：仍从 up-api 聚合器取（只取 monitors，失败不影响 NAS 区）
             try {
                 const response = await fetchWithRetry(MONITORING_PROXY_API, { method: 'POST', cache: 'no-cache' }, { timeout: 20000, retries: 3 });
@@ -264,6 +267,7 @@ document.addEventListener('DOMContentLoaded', function() {
             tabLastLoaded['tab-monitoring'] = Date.now();
         } catch (error) {
             console.error('获取监控数据失败:', error);
+            hideLoading();
         }
         // 兜底：NAS 与 UptimeRobot 均无内容时给出提示
         const tab = document.getElementById('tab-monitoring');
