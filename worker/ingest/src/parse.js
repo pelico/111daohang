@@ -9,7 +9,7 @@ export function parseVmMetrics(text) {
 	const out = {
 		hostname: null,
 		bootTime: 0,
-		cpu: { idle: 0n, idleValid: false, total: 0n },
+		cpu: { idle: 0, idleValid: false, total: 0 },   // CPU 用浮点（node_exporter 是秒累计，浮点）
 		// memPct / temp 由调用方决定如何展示
 		memTotal: 0, memAvail: 0,
 		memPct: null,
@@ -30,13 +30,13 @@ export function parseVmMetrics(text) {
 			continue;
 		}
 		if (out.bootTime === 0 && line.startsWith('node_boot_time_seconds')) {
-			out.bootTime = toBig(line, 0n);
+			out.bootTime = toNumber(line, 0);
 			continue;
 		}
 		// CPU
 		if (line.startsWith('node_cpu_seconds_total')) {
 			const mode = line.match(/mode="([^"]+)"/);
-			const v = toBig(line, 0n);
+			const v = toNumber(line, 0);
 			out.cpu.total += v;
 			if (mode) {
 				if (mode[1] === 'idle') { out.cpu.idle += v; out.cpu.idleValid = true; }
