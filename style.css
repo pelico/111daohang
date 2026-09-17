@@ -206,8 +206,78 @@ footer { text-align: center; margin-top: 60px; padding: 25px; color: rgba(255, 2
     .weather-chart-container { padding: 10px; }
     /* 【已修正】移动端 NAS 布局 */
     #nas-grid-container { grid-template-columns: 1fr; }
-    .nas-card-grid { grid-template-columns: 1fr 1fr; }
-    .nas-metric-card { flex-direction: column; align-items: center; text-align: center; padding: 10px; }
-    .nas-metric-icon { margin-bottom: 8px; }
-    .nas-metric-value { font-size: 1.2em; }
-    .settings-icon { top: 10px; right: 10px; width: 40px; height: 40px; font
+    .nas-card-grid { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .nas-metric-card { flex-direction: column; align-items: center; text-align: center; padding: 8px; gap: 4px; }
+    .nas-metric-icon { font-size: 1.2em; margin-bottom: 4px; }
+    .nas-metric-label { font-size: 0.7em; margin-bottom: 2px; }
+    .nas-metric-value { font-size: 1em; }
+    .nas-metric-value.small-font { font-size: 0.8em; }
+    .nas-card-container { padding: 12px 15px; }
+    .nas-card-container > div:first-child { font-size: 0.9rem; margin-bottom: 10px; }
+    .settings-icon { top: 10px; right: 10px; width: 40px; height: 40px; font-size: 18px; }
+    .settings-modal { padding: 15px; width: 95%; }
+    .add-nas-form { flex-direction: column; gap: 8px; }
+    .add-nas-form input { font-size: 0.9rem; }
+    .chart-wrapper { height: 200px; }
+    .nas-chart-wrapper { height: 180px; }
+    .detail-chart-container { height: 180px; }
+    .chart-container { padding: 15px; }
+    .nav-links { grid-template-columns: 1fr; }
+    .nas-range-bar { flex-wrap: wrap; gap: 5px; }
+    .nas-range-btn { padding: 4px 10px; font-size: 0.8rem; }
+    .nas-device-selector { flex-wrap: wrap; gap: 5px; }
+    .nas-device-chip { padding: 4px 10px; font-size: 0.8rem; }
+}
+
+/* --- 小屏手机 (≤480px) 进一步压缩 --- */
+@media (max-width: 480px) {
+    body { padding: 6px; }
+    .top-bar { padding: 10px; gap: 8px; margin-bottom: 20px; }
+    .time { font-size: 1rem; }
+    .date { font-size: 0.75rem; }
+    .search-box { height: 40px; }
+    .search-box input { font-size: 0.9rem; padding: 0 15px; }
+    .search-box button { width: 50px; font-size: 1rem; }
+    .main-title { margin: 15px 0 20px; }
+    .main-title h1 { font-size: 1.5rem; }
+    .main-title p { font-size: 0.85rem; }
+    .tabs { gap: 3px; margin-bottom: 15px; }
+    .tab-button { padding: 8px 10px; font-size: 0.8rem; gap: 5px; }
+    .tab-button i { font-size: 0.9rem; }
+    .section-title { font-size: 1.1rem; gap: 8px; }
+    .content-header h1 { font-size: 1.2rem; }
+    .nav-category { padding: 12px; }
+    .category-title h2 { font-size: 1rem; }
+    .category-title i { font-size: 1.2rem; }
+    .nav-link { padding: 8px 10px; font-size: 0.85rem; }
+    .nav-link i { font-size: 1.1rem; margin-right: 8px; }
+    .summary-card { padding: 15px; }
+    .card-value { font-size: 1.5rem; }
+    .card-icon { width: 50px; height: 50px; font-size: 22px; }
+    .card-title { font-size: 14px; }
+    .service-card { padding: 12px; }
+    .service-name { font-size: 0.9rem; }
+    .service-status { font-size: 0.8rem; padding: 4px 10px; }
+    .chart-container { padding: 10px; }
+    .chart-wrapper { height: 180px; }
+    .chart-title { font-size: 14px; }
+    .weather-card { padding: 12px; }
+    .weather-card h2 { font-size: 1.2rem; }
+    .weather-card p { font-size: 0.9rem; }
+    .weather-card .weather-text { font-size: 1.1em; }
+    .notification-item { padding: 10px 12px; }
+    .notification-content { font-size: 0.9rem; }
+    /* NAS 卡片：小屏 3 列紧凑网格，图标缩小 */
+    #nas-grid-container { gap: 10px; margin-bottom: 20px; }
+    .nas-card-container { padding: 10px 12px; border-radius: 12px; }
+    .nas-card-grid { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+    .nas-metric-card { padding: 6px; border-radius: 8px; gap: 4px; }
+    .nas-metric-icon { font-size: 1em; margin-bottom: 0; }
+    .nas-metric-label { font-size: 0.65em; margin-bottom: 2px; }
+    .nas-metric-value { font-size: 0.95em; }
+    .nas-metric-value.small-font { font-size: 0.75em; }
+    .nas-status-footer { font-size: 0.65em; margin-top: 6px; }
+    .nas-card-container > div:first-child { font-size: 0.85rem; margin-bottom: 8px; }
+    .settings-icon { width: 36px; height: 36px; font-size: 16px; }
+    footer { padding: 15px; font-size: 0.8rem; margin-top: 30px; }
+}
