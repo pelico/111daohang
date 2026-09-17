@@ -478,8 +478,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- 6. NAS 实时动态监控模块 (顶部) ---
     function initNasModule() {
-        // 每次修改 DEFAULT_NAS_URLS 时，请将 NAS_URLS_VERSION +1
-        // 这样用户浏览器会自动检测到更新并合并新的默认 URL
+        // 修改 DEFAULT_NAS_URLS 后无需手动递增版本号：
+        // 加载时会自动对比并合并缺失的默认 URL（保留本地临时链接，删除的默认链接会被记录不回调）
         const NAS_URLS_VERSION = 2;
         const DEFAULT_NAS_URLS = [
             'https://nas-api.111312.xyz/metrics',
@@ -587,22 +587,35 @@ document.addEventListener('DOMContentLoaded', function() {
         function safeLsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
         function safeLsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
 
+        // 记录用户主动删除过的默认 URL，避免下次加载又被自动合并回来
+        function getRemovedDefaults() {
+            try {
+                const arr = JSON.parse(safeLsGet('nasRemovedUrls') || '[]');
+                return Array.isArray(arr) ? arr : [];
+            } catch (e) { return []; }
+        }
+        function saveRemovedDefaults(arr) {
+            safeLsSet('nasRemovedUrls', JSON.stringify(arr));
+        }
+
         function getUrlsFromStorage() {
             const storedUrls = safeLsGet('nasUrlList');
-            const storedVersion = parseInt(safeLsGet('nasUrlsVersion') || '0', 10);
+            const removedDefaults = getRemovedDefaults();
             if (!storedUrls) {
-                safeLsSet('nasUrlList', JSON.stringify(DEFAULT_NAS_URLS));
+                const initial = DEFAULT_NAS_URLS.slice();
+                safeLsSet('nasUrlList', JSON.stringify(initial));
                 safeLsSet('nasUrlsVersion', String(NAS_URLS_VERSION));
-                return DEFAULT_NAS_URLS.slice();
+                return initial;
             }
             let parsedUrls;
             try {
                 const parsed = JSON.parse(storedUrls);
                 parsedUrls = Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_NAS_URLS.slice();
             } catch (e) { parsedUrls = DEFAULT_NAS_URLS.slice(); }
-            if (storedVersion !== NAS_URLS_VERSION) {
-                const userCustomUrls = parsedUrls.filter(url => !DEFAULT_NAS_URLS.includes(url));
-                const merged = [...DEFAULT_NAS_URLS, ...userCustomUrls];
+            // 每次加载自动合并缺失的默认 URL（无需手动递增版本号），同时保留本地临时链接
+            const missingDefaults = DEFAULT_NAS_URLS.filter(u => !parsedUrls.includes(u) && !removedDefaults.includes(u));
+            if (missingDefaults.length > 0) {
+                const merged = [...parsedUrls, ...missingDefaults];
                 safeLsSet('nasUrlList', JSON.stringify(merged));
                 safeLsSet('nasUrlsVersion', String(NAS_URLS_VERSION));
                 return merged;
@@ -845,6 +858,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (nasInstances[urlToRemove]) delete nasInstances[urlToRemove];
                     nasUrlList.splice(indexToRemove, 1);
                     saveUrlsToStorage(nasUrlList);
+                    // 若删的是默认 URL，记录到 nasRemovedUrls，避免下次加载被自动合并回来
+                    if (DEFAULT_NAS_URLS.includes(urlToRemove)) {
+                        const removed = getRemovedDefaults();
+                        if (!removed.includes(urlToRemove)) {
+                            removed.push(urlToRemove);
+                            saveRemovedDefaults(removed);
+                        }
+                    }
                     renderUrlListInModal();
                     renderNasContainers();
                     startUpdatingAllNas();
