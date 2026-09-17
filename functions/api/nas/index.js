@@ -1,8 +1,13 @@
-// Pages Function: /api/nas -> 设备列表（前台《服务监控》下拉/checkbox 用）
+// Pages Function: GET /api/nas -> 设备列表（含 id + url，前台下拉/checkbox/设置弹窗用）
 export async function onRequestGet(ctx) {
 	const env = ctx.env;
-	const list = (await env.KV.get('device:list', 'json')) || [];
-	return json({ ts: nowSec(), mode: 'index', devices: list });
+	const ids = (await env.KV.get('device:list', 'json')) || [];
+	const metas = await Promise.all(ids.map(id => env.KV.get(`dev:meta:${id}`, 'json')));
+	const devices = ids.map(id => {
+		const m = metas.find(x => x && x.id === id);
+		return { id, url: m ? m.url : null };
+	}).filter(d => d.url);
+	return json({ ts: nowSec(), mode: 'index', devices });
 }
 
 function nowSec() { return Math.floor(Date.now() / 1000); }

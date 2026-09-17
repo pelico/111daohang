@@ -75,7 +75,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const NOTIFICATIONS_API = 'https://jy-api.111312.xyz/notifications';
     const MONITORING_PROXY_API = 'https://up-api.111312.xyz/';
     const WEATHER_API = 'https://tq-api.111312.xyz';
-    const NAS_WORKER_URL = 'https://nas-hook.111312.xyz/';
+    // NAS 数据走本站 Pages Function 内部流转，无需外部 worker 域名
+    const NAS_HISTORY_API = '/api/nas/history';
+    const NAS_INDEX_API = '/api/nas/index';
 
     // --- 全局变量 ---
     let monitorDataCache = [];
@@ -85,9 +87,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // P1-5: 每个 Tab 上次成功加载时间戳，超时自动补刷
     const tabLastLoaded = { 'tab-monitoring': 0, 'tab-notifications': 0, 'tab-weather': 0 };
     const TAB_STALE_MS = 10 * 60 * 1000; // 10 分钟视为过期
-    let nasCpuHistoryChart, nasNetworkHistoryChart, nasTempHistoryChart;
-    // P0-3: NAS 轮询 abort 集合
-    let nasFetchAbortController = null;
+    // NAS 历史设备选择状态（监控页用）
+    let nasSelectedDevices = [];
+    let nasHistoryRange = '7d';
 
     // --- 1. 基础功能 ---
     function updateTime() {
@@ -247,94 +249,175 @@ document.addEventListener('DOMContentLoaded', function() {
         const container = document.getElementById('tab-monitoring');
         if (container) container.innerHTML = `<div class="loading-state"><div class="loading-spinner"></div><p>正在加载服务监控数据...</p></div>`;
         try {
-            // P1-7: 超时 + 指数退避重试
-            const response = await fetchWithRetry(MONITORING_PROXY_API, { method: 'POST', cache: 'no-cache' }, { timeout: 20000, retries: 3 });
-            if (!response.ok) throw new Error(`API 请求失败: ${response.status}`);
-            const data = await response.json();
-            if (data.stat === 'fail') throw new Error(`API 返回错误: ${(data.error || {}).message || '未知'}`);
-            renderCombinedMonitoringPage(data);
+            // NAS 历史：走本站 Pages Function 内部流转（多设备勾选 + 范围切换）
+            await loadNasMonitoring();
+            // UptimeRobot 网站服务监控：仍从 up-api 聚合器取（只取 monitors，失败不影响 NAS 区）
+            try {
+                const response = await fetchWithRetry(MONITORING_PROXY_API, { method: 'POST', cache: 'no-cache' }, { timeout: 20000, retries: 3 });
+                if (!response.ok) throw new Error(`API 请求失败: ${response.status}`);
+                const data = await response.json();
+                if (data.stat === 'fail') throw new Error(`API 返回错误: ${(data.error || {}).message || '未知'}`);
+                renderUptimeMonitoring(data);
+            } catch (e) {
+                console.error('UptimeRobot 监控获取失败:', e);
+            }
             tabLastLoaded['tab-monitoring'] = Date.now();
         } catch (error) {
             console.error('获取监控数据失败:', error);
-            showMonitoringError(error.message);
+        }
+        // 兜底：NAS 与 UptimeRobot 均无内容时给出提示
+        const tab = document.getElementById('tab-monitoring');
+        if (tab && !tab.querySelector('.nas-section') && !tab.querySelector('#uptime-robot-container') && !tab.querySelector('.error-state')) {
+            showMonitoringError('未能加载任何监控数据。');
         }
     }
-    function renderCombinedMonitoringPage(data) {
+    function renderUptimeMonitoring(data) {
         const container = document.getElementById('tab-monitoring');
         if (!container) return;
-        // P0-1: 重建 DOM 前，先销毁此 Tab 下所有旧图表实例
+        // P0-1: 重建 uptime 图前销毁旧图
         destroyChartsWithPrefix('mon-');
-        destroyChartsWithPrefix('nas-history-');
-        container.innerHTML = '';
-        const hasNasHistory = data.nas_history && (data.nas_history.cpu?.length > 0 || data.nas_history.network?.total?.length > 0 || data.nas_history.temp?.length > 0);
-        const hasMonitors = data.monitors && data.monitors.length > 0;
-        if (!hasNasHistory && !hasMonitors) { showMonitoringError("未能加载任何监控数据。"); return; }
-        if (hasNasHistory) {
-            const nasSection = document.createElement('div');
-            nasSection.className = 'nas-section';
-            nasSection.innerHTML = `<h2 class="section-title"><i class="fas fa-server"></i><span>NAS 历史趋势 (7天)</span></h2><div class="charts-grid"><div class="chart-container"><div class="chart-header"><h3 class="chart-title">CPU 使用率</h3></div><div class="nas-chart-wrapper"><canvas id="nasCpuHistoryChart"></canvas></div></div><div class="chart-container"><div class="chart-header"><h3 class="chart-title">网络总流量</h3></div><div class="nas-chart-wrapper"><canvas id="nasNetworkHistoryChart"></canvas></div></div><div class="chart-container" id="nas-temp-history-chart-container" style="display: none;"><div class="chart-header"><h3 class="chart-title">温度变化</h3></div><div class="nas-chart-wrapper"><canvas id="nasTempHistoryChart"></canvas></div></div></div>`;
-            container.appendChild(nasSection);
-            renderNasHistoryCharts(data.nas_history);
-        }
-        if (hasMonitors) {
-            const monitors = data.monitors;
-            monitorDataCache = monitors;
-            let totalUptime = 0;
-            monitors.forEach(m => {
-                let uptimeRatio = parseFloat(m.custom_uptime_ratios?.split('-')[0]);
-                if ((isNaN(uptimeRatio) || uptimeRatio === 0) && m.status === 2) { uptimeRatio = 100.0; }
-                else if (isNaN(uptimeRatio)) { uptimeRatio = parseFloat(m.all_time_uptime_ratio) || 0; }
-                totalUptime += uptimeRatio;
-            });
-            // P0-2: friendly_name 等用户可控字符串用 escapeHtml
-            const servicesHTML = monitors.map(monitor => {
-                const status = STATUS_MAP[monitor.status] || { text: '未知', class: 'status-warning', icon: 'fa-question-circle' };
-                return `<div class="service-card" id="monitor-card-${monitor.id}"> <div class="service-card-header" onclick="toggleDetailChart(${monitor.id})"> <div class="service-header"> <div class="service-name">${escapeHtml(monitor.friendly_name)} <i class="fas fa-chevron-down"></i></div> <div class="service-status ${status.class}"><i class="fas ${status.icon}"></i> ${escapeHtml(status.text)}</div> </div> </div> <div class="service-details"> <div class="service-details-content"> <div class="detail-chart-container"><canvas id="detail-chart-${monitor.id}"></canvas></div> </div> </div> </div>`;
-            }).join('');
-            const uptimeContainer = document.createElement('div');
-            uptimeContainer.id = 'uptime-robot-container';
-            uptimeContainer.innerHTML = `<h2 class="section-title"><i class="fas fa-network-wired"></i><span>网站服务监控 (UptimeRobot)</span></h2><div class="charts-grid"><div class="summary-card uptime"><div class="card-icon"><i class="fas fa-chart-line"></i></div><div class="card-title">平均正常率 (7天)</div><div class="card-value">${monitors.length > 0 ? (totalUptime / monitors.length).toFixed(2) : '0'}%</div></div><div class="chart-container"><div class="chart-header"><h3 class="chart-title">平均响应时间 (24小时)</h3></div><div class="chart-wrapper"><canvas id="responseTimeChart"></canvas></div></div></div><div class="services-grid" style="margin-top: 30px;"><div id="services-list">${servicesHTML}</div></div>`;
-            container.appendChild(uptimeContainer);
-            renderOverviewCharts(monitors);
-        }
+        const monitors = data.monitors;
+        if (!monitors || !monitors.length) return;
+        monitorDataCache = monitors;
+        let totalUptime = 0;
+        monitors.forEach(m => {
+            let uptimeRatio = parseFloat(m.custom_uptime_ratios?.split('-')[0]);
+            if ((isNaN(uptimeRatio) || uptimeRatio === 0) && m.status === 2) { uptimeRatio = 100.0; }
+            else if (isNaN(uptimeRatio)) { uptimeRatio = parseFloat(m.all_time_uptime_ratio) || 0; }
+            totalUptime += uptimeRatio;
+        });
+        // P0-2: friendly_name 等用户可控字符串用 escapeHtml
+        const servicesHTML = monitors.map(monitor => {
+            const status = STATUS_MAP[monitor.status] || { text: '未知', class: 'status-warning', icon: 'fa-question-circle' };
+            return `<div class="service-card" id="monitor-card-${monitor.id}"> <div class="service-card-header" onclick="toggleDetailChart(${monitor.id})"> <div class="service-header"> <div class="service-name">${escapeHtml(monitor.friendly_name)} <i class="fas fa-chevron-down"></i></div> <div class="service-status ${status.class}"><i class="fas ${status.icon}"></i> ${escapeHtml(status.text)}</div> </div> </div> <div class="service-details"> <div class="service-details-content"> <div class="detail-chart-container"><canvas id="detail-chart-${monitor.id}"></canvas></div> </div> </div> </div>`;
+        }).join('');
+        const uptimeContainer = document.createElement('div');
+        uptimeContainer.id = 'uptime-robot-container';
+        uptimeContainer.innerHTML = `<h2 class="section-title"><i class="fas fa-network-wired"></i><span>网站服务监控 (UptimeRobot)</span></h2><div class="charts-grid"><div class="summary-card uptime"><div class="card-icon"><i class="fas fa-chart-line"></i></div><div class="card-title">平均正常率 (7天)</div><div class="card-value">${monitors.length > 0 ? (totalUptime / monitors.length).toFixed(2) : '0'}%</div></div><div class="chart-container"><div class="chart-header"><h3 class="chart-title">平均响应时间 (24小时)</h3></div><div class="chart-wrapper"><canvas id="responseTimeChart"></canvas></div></div></div><div class="services-grid" style="margin-top: 30px;"><div id="services-list">${servicesHTML}</div></div>`;
+        container.appendChild(uptimeContainer);
+        renderOverviewCharts(monitors);
     }
-    function renderNasHistoryCharts(history) {
-        destroyChartById('nas-history-cpu');
-        destroyChartById('nas-history-net');
-        destroyChartById('nas-history-temp');
-        if (nasCpuHistoryChart) { try { nasCpuHistoryChart.destroy(); } catch (e) {} nasCpuHistoryChart = null; }
-        if (nasNetworkHistoryChart) { try { nasNetworkHistoryChart.destroy(); } catch (e) {} nasNetworkHistoryChart = null; }
-        if (nasTempHistoryChart) { try { nasTempHistoryChart.destroy(); } catch (e) {} nasTempHistoryChart = null; }
-        const cpuCtx = document.getElementById('nasCpuHistoryChart')?.getContext('2d');
-        if (cpuCtx && history.cpu && history.cpu.length > 0) {
-            nasCpuHistoryChart = new Chart(cpuCtx, { type: 'line', data: { datasets: [{ label: 'CPU Usage (%)', data: history.cpu.map(d => ({x: d.timestamp * 1000, y: d.usage})), borderColor: 'rgba(30, 136, 229, 0.7)', backgroundColor: 'rgba(30, 136, 229, 0.1)', borderWidth: 1.5, pointRadius: 0, tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, max: 100, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } } } });
-            registerChart('nas-history-cpu', nasCpuHistoryChart);
+
+    // ============ NAS 历史（多设备 + 范围切换，服务器内部流转） ============
+    const NAS_DEVICE_PALETTE = ['rgb(30,136,229)', 'rgb(76,175,80)', 'rgb(255,152,0)', 'rgb(156,39,176)', 'rgb(244,67,54)', 'rgb(0,172,193)', 'rgb(139,195,74)', 'rgb(121,85,72)'];
+    function nasChartRateTick(v) {
+        if (v == null || v <= 0) return '0';
+        const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+        const k = 1024; let x = v, i = 0;
+        while (x >= k && i < sizes.length - 1) { x /= k; i++; }
+        return parseFloat(x.toFixed(1)) + ' ' + sizes[i];
+    }
+    async function loadNasMonitoring() {
+        const container = document.getElementById('tab-monitoring');
+        if (!container) return;
+        // 每次进入清掉旧 NAS 区块与历史图，避免重复堆叠
+        destroyChartsWithPrefix('nas-history-');
+        document.getElementById('nas-history-section')?.remove();
+        let devices = [];
+        try {
+            const res = await fetchWithTimeout(NAS_INDEX_API, { cache: 'no-store' }, 15000);
+            const data = res.ok ? await res.json() : {};
+            devices = (data && Array.isArray(data.devices)) ? data.devices : [];
+        } catch (e) { devices = []; }
+        if (!nasSelectedDevices.length) nasSelectedDevices = devices.map(d => d.id);
+        renderNasHistorySection(devices);
+        await fetchNasHistory();
+    }
+    function renderNasHistorySection(devices) {
+        const container = document.getElementById('tab-monitoring');
+        if (!container) return;
+        const section = document.createElement('div');
+        section.id = 'nas-history-section';
+        section.className = 'nas-section';
+        const cb = devices.map(d => {
+            const checked = nasSelectedDevices.includes(d.id) ? ' checked' : '';
+            return `<label class="nas-dev-check"><input type="checkbox" data-device="${escapeHtml(d.id)}"${checked}> ${escapeHtml(d.id)}</label>`;
+        }).join('') || '<span class="nas-empty-text">暂无可选的 NAS 设备</span>';
+        const rangeBtn = (v, label) => `<button class="nas-range-btn${nasHistoryRange === v ? ' active' : ''}" data-range="${v}">${label}</button>`;
+        section.innerHTML = `<h2 class="section-title"><i class="fas fa-server"></i><span>NAS 历史趋势</span></h2><div class="nas-toolbar"><div class="nas-dev-checks">${cb}</div><div class="nas-range-group">${rangeBtn('24h', '24小时')}${rangeBtn('7d', '7天')}${rangeBtn('30d', '30天')}</div></div><div class="charts-grid" id="nas-history-charts"></div>`;
+        container.appendChild(section);
+        section.querySelectorAll('input[type="checkbox"]').forEach(inp => {
+            inp.addEventListener('change', () => {
+                const id = inp.getAttribute('data-device');
+                if (inp.checked) { if (!nasSelectedDevices.includes(id)) nasSelectedDevices.push(id); }
+                else nasSelectedDevices = nasSelectedDevices.filter(x => x !== id);
+                fetchNasHistory();
+            });
+        });
+        section.querySelectorAll('.nas-range-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                nasHistoryRange = btn.getAttribute('data-range');
+                section.querySelectorAll('.nas-range-btn').forEach(b => b.classList.toggle('active', b === btn));
+                fetchNasHistory();
+            });
+        });
+    }
+    async function fetchNasHistory() {
+        if (!nasSelectedDevices.length) { renderNasHistoryChartsFromPoints([], nasHistoryRange); return; }
+        const qs = new URLSearchParams({ devices: nasSelectedDevices.join(','), range: nasHistoryRange });
+        let points = [];
+        try {
+            const res = await fetchWithTimeout(NAS_HISTORY_API + '?' + qs.toString(), { cache: 'no-store' }, 20000);
+            if (res.ok) { const data = await res.json(); points = (data && data.points) || data.devices || []; }
+        } catch (e) { console.error('NAS 历史加载失败:', e); }
+        renderNasHistoryChartsFromPoints(points, nasHistoryRange);
+    }
+    function renderNasHistoryChartsFromPoints(points, range) {
+        const chartBox = document.getElementById('nas-history-charts');
+        if (!chartBox) return;
+        destroyChartsWithPrefix('nas-history-');
+        chartBox.innerHTML = '';
+        if (!points.length) {
+            const d = document.createElement('div');
+            d.className = 'nas-empty-text';
+            d.textContent = '暂无历史数据（等待采集，或确认 Pages 已绑定 D1 数据库）';
+            chartBox.appendChild(d);
+            return;
         }
-        const netCtx = document.getElementById('nasNetworkHistoryChart')?.getContext('2d');
-        if (netCtx && history.network) {
+        const byDevice = {};
+        for (const p of points) { (byDevice[p.device_id] = byDevice[p.device_id] || []).push(p); }
+        const ids = Object.keys(byDevice);
+        const timeUnit = range && range.startsWith('24') ? 'hour' : 'day';
+        const charts = [
+            { key: 'cpu',  title: 'CPU 使用率 (%)', bps: false, begin0: true },
+            { key: 'mem',  title: '内存使用 (%)',   bps: false, begin0: false },
+            { key: 'up',   title: '上行速率',        bps: true,  begin0: true },
+            { key: 'down', title: '下行速率',        bps: true,  begin0: true },
+            { key: 'temp', title: '温度 (°C)',       bps: false, begin0: false }
+        ];
+        charts.forEach((ch, ci) => {
             const datasets = [];
-            if (history.network.total && history.network.total.length > 0) {
-                datasets.push({ label: '总接收 (GB)', data: history.network.total.map(d => ({ x: d.timestamp * 1000, y: d.total_recv / 1024**3 })), borderColor: 'rgba(76, 175, 80, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4 });
-                datasets.push({ label: '总发送 (GB)', data: history.network.total.map(d => ({ x: d.timestamp * 1000, y: d.total_sent / 1024**3 })), borderColor: 'rgba(255, 152, 0, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4 });
-            }
-            if (history.network.docker && history.network.docker.length > 0) {
-                 datasets.push({ label: 'Docker 接收 (GB)', data: history.network.docker.map(d => ({ x: d.timestamp * 1000, y: d.total_recv / 1024**3 })), borderColor: 'rgba(156, 39, 176, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4, borderDash: [5, 5] });
-                 datasets.push({ label: 'Docker 发送 (GB)', data: history.network.docker.map(d => ({ x: d.timestamp * 1000, y: d.total_sent / 1024**3 })), borderColor: 'rgba(8, 14, 153, 0.7)', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4, borderDash: [5, 5] });
-            }
-            if (datasets.length > 0) {
-                nasNetworkHistoryChart = new Chart(netCtx, { type: 'line', data: { datasets: datasets }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, title: { display: !isMobile, text: 'GB' }, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 } } }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } } } });
-                registerChart('nas-history-net', nasNetworkHistoryChart);
-            }
-        }
-        if (history.temp && history.temp.length > 0) {
-            const tempContainer = document.getElementById('nas-temp-history-chart-container');
-            if (tempContainer) tempContainer.style.display = 'block';
-            const tempCtx = document.getElementById('nasTempHistoryChart')?.getContext('2d');
-            if(tempCtx) {
-                nasTempHistoryChart = new Chart(tempCtx, { type: 'line', data: { datasets: [{ label: '温度 (°C)', data: history.temp.map(d => ({ x: d.timestamp * 1000, y: d.temperature })), borderColor: 'rgba(244, 67, 54, 0.7)', backgroundColor: 'rgba(244, 67, 54, 0.1)', borderWidth: 1.5, pointRadius: 0, tension: 0.4, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { font: { size: 10 } } }, y: { beginAtZero: false, title: { display: !isMobile, text: '°C' }, ticks: { font: { size: 10 } } } }, plugins: { legend: { display: false }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } } } });
-                registerChart('nas-history-temp', nasTempHistoryChart);
-            }
-        }
+            let has = false;
+            ids.forEach((id, di) => {
+                const rows = byDevice[id].filter(r => r[ch.key] != null);
+                if (!rows.length) return;
+                has = true;
+                const color = NAS_DEVICE_PALETTE[di % NAS_DEVICE_PALETTE.length];
+                datasets.push({
+                    label: String(id),
+                    data: rows.map(r => ({ x: r.ts * 1000, y: ch.bps ? Math.abs(r[ch.key]) : r[ch.key] })),
+                    borderColor: color, backgroundColor: color.replace('rgb', 'rgba').replace(')', ', 0.15)'),
+                    borderWidth: 1.5, pointRadius: 0, tension: 0.4, fill: true
+                });
+            });
+            if (!has) return;
+            const w = document.createElement('div');
+            w.className = 'chart-container';
+            w.innerHTML = `<div class="chart-header"><h3 class="chart-title">${ch.title}</h3></div><div class="nas-chart-wrapper"><canvas id="nas-history-canvas-${ci}"></canvas></div>`;
+            chartBox.appendChild(w);
+            const ctx = w.querySelector('canvas')?.getContext('2d');
+            if (!ctx) return;
+            const yTicks = ch.bps ? { font: { size: 10 }, callback: v => nasChartRateTick(v) } : { font: { size: 10 } };
+            const c = new Chart(ctx, { type: 'line', data: { datasets }, options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    x: { type: 'time', time: { unit: timeUnit }, ticks: { font: { size: 10 } } },
+                    y: { beginAtZero: ch.begin0, ticks: yTicks }
+                },
+                plugins: { legend: { display: ids.length > 1, labels: { font: { size: 10 } } }, tooltip: { enabled: !isMobile, mode: 'x', intersect: false } }
+            } });
+            registerChart(`nas-history-${ci}`, c);
+        });
     }
     window.toggleDetailChart = function(monitorId) {
         const card = document.getElementById(`monitor-card-${monitorId}`);
@@ -478,355 +561,131 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- 6. NAS 实时动态监控模块 (顶部) ---
     function initNasModule() {
-        // 修改 DEFAULT_NAS_URLS 后无需手动递增版本号：
-        // 加载时会自动对比并合并缺失的默认 URL（保留本地临时链接，删除的默认链接会被记录不回调）
-        const NAS_URLS_VERSION = 2;
-        const DEFAULT_NAS_URLS = [
-            'https://nas-api.111312.xyz/metrics',
-            'https://wkyapi.111312.xyz/metrics',
-            'https://macapi.111312.xyz/metrics',
-            'https://btmapi.111312.xyz/metrics'
-        ];
-
-        // P0-3 / P1-6: 预编译正则（热路径不重复编译）
-        const RE_MODE = /mode="([^"]+)"/;
-        const RE_DEVICE = /device="([^"]+)"/;
-        const RE_MOUNT = /mountpoint="([^"]+)"/;
-        const RE_LINESTART = /^node_(cpu_seconds_total|memory_MemTotal_bytes|memory_MemAvailable_bytes|network_receive_bytes_total|network_transmit_bytes_total|boot_time_seconds|thermal_zone_temp|hwmon_temp_input|filesystem_size_bytes|filesystem_avail_bytes)/;
-        const IGNORED_IFACE = /^(lo|veth|docker0|tailscale0)/;
-
-        const NAS_CONCURRENT_LIMIT = 3;      // 最多同时 3 个 NAS 请求
-        const NAS_FETCH_TIMEOUT = 15000;     // 单次请求 15s 超时
+        // 数据来自服务器端 KV 快照（/api/nas/realtime），不再在前端直接抓取 metrics
+        const NAS_API = {
+            index: '/api/nas/index',
+            realtime: '/api/nas/realtime',
+            history: '/api/nas/history',
+            register: '/api/nas/register',
+            unregister: '/api/nas/unregister'
+        };
         const NAS_POLL_INTERVAL = 10000;     // 前台 10s
         const NAS_POLL_BACKGROUND = 60000;   // 后台 60s（P1-6）
-        const NAS_UPTIME_INTERVAL = 60000;   // P1-4: 60s 更新一次运行时间（分钟级显示）
-
-        let nasInstances = {};                // url -> { 状态数据 + elements: {... 缓存的 DOM 引用 } }
-        let nasUrlList = [];
-        let updateInterval = null;
-        let uptimeInterval = null;
-        let totalSpeeds = { up: 0, down: 0 };
         const originalTitle = document.title;
-        // P1-6: 可见性状态
-        let currentPollInterval = NAS_POLL_INTERVAL;
 
-        // ============ NAS 专用工具 ============
+        let realtimeTimer = null;
+        let currentPollInterval = NAS_POLL_INTERVAL;
+        let nasDevices = [];                 // [{device_id,url,ts,cpu,mem,up,down,temp}]
+        let totalSpeeds = { up: 0, down: 0 };
+
+        // ============ NAS 格式工具（实时卡片/标题用） ============
         function nas_formatSize(bytes, sizes, decimals = 1) {
-            // 合并 formatBytes / formatSpeed，避免重复 + 去掉 Math.log 边界问题
             if (bytes == null || bytes <= 0) return sizes[0] === 'B' ? `0 ${sizes[0]}` : `0 ${sizes[1]}`;
             const k = 1024;
             let v = bytes, i = 0;
             while (v >= k && i < sizes.length - 1) { v /= k; i++; }
             return `${parseFloat(v.toFixed(decimals))} ${sizes[i]}`;
         }
-        function nas_formatBytes(bytes, decimals = 1) { return nas_formatSize(bytes, ['B','KB','MB','GB','TB'], decimals); }
         function nas_formatSpeed(bytesPerSecond, decimals = 2) { return nas_formatSize(bytesPerSecond, ['B/s','KB/s','MB/s','GB/s'], decimals); }
-        function nas_formatUptime(seconds) {
-            if (!seconds || seconds <= 0) return '--';
-            seconds = Math.floor(seconds);
-            const d = Math.floor(seconds / 86400);
-            const h = Math.floor(seconds % 86400 / 3600);
-            const m = Math.floor(seconds % 3600 / 60);
-            return `${d}天 ${h}小时 ${m}分钟`;
-        }
 
-        // P0-3: parseNasRealtimeMetrics 优化：预编译正则 + indexOf 快速过滤
-        function parseNasRealtimeMetrics(text) {
-            const metrics = { cpu: { total: 0, idle: 0 }, memory: { total: 0, available: 0 }, network: { received: 0, transmitted: 0 }, bootTime: 0, temp: null, filesystems: {} };
-            let primaryInterface = null;
-            const networkData = {};
-            const targetMountpoint = '/etc/hostname';
-            const lines = text.split('\n');
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                if (line.length === 0 || line.charCodeAt(0) === 35 /* # */) continue;
-                // 快速跳过不相关行（indexOf 比 N 次 startsWith 快得多）
-                if (!RE_LINESTART.test(line)) continue;
-                const sp = line.indexOf(' ');
-                if (sp < 0) continue;
-                const value = parseFloat(line.substring(sp + 1));
-                if (line.startsWith('node_cpu_seconds_total')) {
-                    const m = line.match(RE_MODE);
-                    if (m) {
-                        metrics.cpu.total += value;
-                        if (m[1] === 'idle') metrics.cpu.idle += value;
-                    }
-                } else if (line.startsWith('node_memory_MemTotal_bytes')) metrics.memory.total = value;
-                else if (line.startsWith('node_memory_MemAvailable_bytes')) metrics.memory.available = value;
-                else if (line.startsWith('node_network_receive_bytes_total') || line.startsWith('node_network_transmit_bytes_total')) {
-                    const isRecv = line.startsWith('node_network_receive_bytes_total');
-                    const m = line.match(RE_DEVICE);
-                    if (m) {
-                        const dev = m[1];
-                        if (!networkData[dev]) networkData[dev] = { received: 0, transmitted: 0 };
-                        if (isRecv) networkData[dev].received = value;
-                        else networkData[dev].transmitted = value;
-                    }
-                } else if (line.startsWith('node_boot_time_seconds')) metrics.bootTime = value;
-                else if (line.startsWith('node_thermal_zone_temp') || line.startsWith('node_hwmon_temp_input')) {
-                    if (metrics.temp === null) metrics.temp = value;
-                } else if (line.startsWith('node_filesystem_size_bytes') || line.startsWith('node_filesystem_avail_bytes')) {
-                    const m = line.match(RE_MOUNT);
-                    if (m && m[1] === targetMountpoint) {
-                        const mp = m[1];
-                        if (!metrics.filesystems[mp]) metrics.filesystems[mp] = { size: 0, avail: 0 };
-                        if (line.startsWith('node_filesystem_size_bytes')) metrics.filesystems[mp].size = value;
-                        else metrics.filesystems[mp].avail = value;
-                    }
-                }
-            }
-            for (const dev in networkData) {
-                if (!IGNORED_IFACE.test(dev)) { primaryInterface = dev; break; }
-            }
-            if (!primaryInterface && networkData.eth0) primaryInterface = 'eth0';
-            if (primaryInterface && networkData[primaryInterface]) metrics.network = networkData[primaryInterface];
-            return metrics;
+        // ============ 顶部实时卡片 ============
+        async function fetchRealtime() {
+            const res = await fetchWithTimeout(NAS_API.realtime, { cache: 'no-store' }, 15000);
+            if (!res.ok) throw new Error(`realtime ${res.status}`);
+            const data = await res.json();
+            return (data && Array.isArray(data.devices)) ? data.devices : [];
         }
-
-        // storage 带 try-catch（P2 顺便修）
-        function safeLsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
-        function safeLsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
-
-        // 记录用户主动删除过的默认 URL，避免下次加载又被自动合并回来
-        function getRemovedDefaults() {
-            try {
-                const arr = JSON.parse(safeLsGet('nasRemovedUrls') || '[]');
-                return Array.isArray(arr) ? arr : [];
-            } catch (e) { return []; }
+        function deviceLabel(dev) {
+            if (dev.device_id) return dev.device_id;
+            try { return new URL(dev.url).hostname; } catch (e) { return dev.url || '设备'; }
         }
-        function saveRemovedDefaults(arr) {
-            safeLsSet('nasRemovedUrls', JSON.stringify(arr));
+        function createNasCardHtml(dev) {
+            const label = escapeHtml(deviceLabel(dev));
+            const tempTile = (dev.temp != null)
+                ? `<div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-thermometer-half"></i></div><div class="nas-metric-details"><span class="nas-metric-label">温度</span><div class="nas-metric-value">${Number(dev.temp).toFixed(1)}°C</div></div></div>`
+                : '';
+            return `<div class="nas-card-container" data-device="${escapeHtml(dev.device_id||'')}" data-url="${escapeHtml(dev.url||'')}"> <div style="font-weight: bold; color: var(--primary-dark); margin-bottom: 15px; text-align: center;">${label}</div> <div class="nas-card-grid"> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-microchip"></i></div><div class="nas-metric-details"><span class="nas-metric-label">CPU</span><div class="nas-metric-value">${dev.cpu==null?'--':Number(dev.cpu).toFixed(1)+'%'}</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-memory"></i></div><div class="nas-metric-details"><span class="nas-metric-label">内存</span><div class="nas-metric-value">${dev.mem==null?'--':Number(dev.mem).toFixed(1)+'%'}</div></div></div> ${tempTile} <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-exchange-alt"></i></div><div class="nas-metric-details"><span class="nas-metric-label">上传/下载</span><div class="nas-metric-value small-font">${nas_formatSpeed(dev.up||0)} / ${nas_formatSpeed(dev.down||0)}</div></div></div> </div> <div class="nas-status-footer"><span class="nas-status-text">${dev.ts?('更新: '+new Date(dev.ts*1000).toLocaleTimeString()):'等待数据...'}</span></div> </div>`;
         }
-
-        function getUrlsFromStorage() {
-            const storedUrls = safeLsGet('nasUrlList');
-            const removedDefaults = getRemovedDefaults();
-            if (!storedUrls) {
-                const initial = DEFAULT_NAS_URLS.slice();
-                safeLsSet('nasUrlList', JSON.stringify(initial));
-                safeLsSet('nasUrlsVersion', String(NAS_URLS_VERSION));
-                return initial;
-            }
-            let parsedUrls;
-            try {
-                const parsed = JSON.parse(storedUrls);
-                parsedUrls = Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_NAS_URLS.slice();
-            } catch (e) { parsedUrls = DEFAULT_NAS_URLS.slice(); }
-            // 每次加载自动合并缺失的默认 URL（无需手动递增版本号），同时保留本地临时链接
-            const missingDefaults = DEFAULT_NAS_URLS.filter(u => !parsedUrls.includes(u) && !removedDefaults.includes(u));
-            if (missingDefaults.length > 0) {
-                const merged = [...parsedUrls, ...missingDefaults];
-                safeLsSet('nasUrlList', JSON.stringify(merged));
-                safeLsSet('nasUrlsVersion', String(NAS_URLS_VERSION));
-                return merged;
-            }
-            return parsedUrls;
-        }
-        function saveUrlsToStorage(urls) {
-            safeLsSet('nasUrlList', JSON.stringify(urls));
-            safeLsSet('nasUrlsVersion', String(NAS_URLS_VERSION));
-        }
-
-        // P1-4: 每个 NAS 实例的 DOM 引用缓存，避免热路径 getElementById
-        function cacheNasElements(index) {
-            return {
-                cpuUsage: document.getElementById(`nas-cpu-usage-${index}`),
-                memUsage: document.getElementById(`nas-mem-usage-${index}`),
-                memDetails: document.getElementById(`nas-mem-details-${index}`),
-                tempCard: document.getElementById(`nas-temp-card-${index}`),
-                tempValue: document.getElementById(`nas-temp-value-${index}`),
-                netSpeed: document.getElementById(`nas-net-speed-${index}`),
-                diskUsage: document.getElementById(`nas-disk-usage-${index}`),
-                diskDetails: document.getElementById(`nas-disk-details-${index}`),
-                systemUptime: document.getElementById(`nas-system-uptime-${index}`),
-                bootTime: document.getElementById(`nas-boot-time-${index}`),
-                statusText: document.getElementById(`nas-status-text-${index}`),
-                errorText: document.getElementById(`nas-error-text-${index}`)
-            };
-        }
-
-        function createNasCardHtml(url, index) {
-            const urlHostname = escapeHtml(new URL(url).hostname); // P0-2
-            return `<div class="nas-card-container" data-url="${escapeHtml(url)}"> <div style="font-weight: bold; color: var(--primary-dark); margin-bottom: 15px; text-align: center;">${urlHostname}</div> <div class="nas-card-grid"> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-microchip"></i></div><div class="nas-metric-details"><span class="nas-metric-label">CPU</span><div class="nas-metric-value" id="nas-cpu-usage-${index}">--%</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-memory"></i></div><div class="nas-metric-details"><span class="nas-metric-label">内存</span><div class="nas-metric-value" id="nas-mem-usage-${index}">--%</div><div class="nas-metric-subvalue" id="nas-mem-details-${index}">--/--GB</div></div></div> <div class="nas-metric-card" id="nas-temp-card-${index}" style="display: none;"><div class="nas-metric-icon"><i class="fas fa-thermometer-half"></i></div><div class="nas-metric-details"><span class="nas-metric-label">温度</span><div class="nas-metric-value" id="nas-temp-value-${index}">--°C</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-exchange-alt"></i></div><div class="nas-metric-details"><span class="nas-metric-label">上传/下载</span><div class="nas-metric-value small-font" id="nas-net-speed-${index}">-- / --</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-hdd"></i></div><div class="nas-metric-details"><span class="nas-metric-label">系统存储</span><div class="nas-metric-value" id="nas-disk-usage-${index}">--%</div><div class="nas-metric-subvalue" id="nas-disk-details-${index}">--/--GB</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-history"></i></div><div class="nas-metric-details"><span class="nas-metric-label">运行时间</span><div class="nas-metric-value small-font" id="nas-system-uptime-${index}">--</div><div class="nas-metric-subvalue" id="nas-boot-time-${index}">--</div></div></div> </div> <div id="nas-status-footer-${index}" class="nas-status-footer"><span id="nas-status-text-${index}">正在连接...</span><span id="nas-error-text-${index}" class="nas-error"></span></div> </div>`;
-        }
-        function renderNasContainers() {
+        function renderRealtimeCards() {
             const container = document.getElementById('nas-grid-container');
             if (!container) return;
-            container.innerHTML = nasUrlList.map(createNasCardHtml).join('');
-            // P1-4: 渲染后立刻缓存所有 DOM 引用
-            nasUrlList.forEach((url, index) => {
-                if (!nasInstances[url]) nasInstances[url] = {};
-                nasInstances[url].elements = cacheNasElements(index);
-            });
+            container.innerHTML = nasDevices.length
+                ? nasDevices.map(createNasCardHtml).join('')
+                : `<div style="padding:20px;text-align:center;color:var(--text-secondary);">暂无 NAS 数据，点击右上角 <i class="fas fa-cog"></i> 在设置里添加 metrics 链接</div>`;
         }
-        function renderUrlListInModal() {
-            const listContainer = document.getElementById('nas-url-list');
-            if (!listContainer) return;
-            listContainer.innerHTML = '';
-            const frag = document.createDocumentFragment();
-            nasUrlList.forEach((url, index) => {
-                const item = document.createElement('div');
-                item.className = 'nas-url-item';
-                const span = document.createElement('span');
-                span.textContent = url;
-                const btn = document.createElement('button');
-                btn.className = 'delete-nas-button';
-                btn.setAttribute('data-index', String(index));
-                btn.textContent = '删除';
-                item.appendChild(span);
-                item.appendChild(btn);
-                frag.appendChild(item);
-            });
-            listContainer.appendChild(frag);
-        }
-
         function updatePageTitle() {
-            // P1-6: 页面不可见时不改标题，省资源
             if (document.hidden) return;
-            const upSpeed = nas_formatSpeed(totalSpeeds.up, 1);
-            const downSpeed = nas_formatSpeed(totalSpeeds.down, 1);
-            document.title = `↑${upSpeed} / ↓${downSpeed} | ${originalTitle}`;
+            document.title = `↑${nas_formatSpeed(totalSpeeds.up,1)} / ↓${nas_formatSpeed(totalSpeeds.down,1)} | ${originalTitle}`;
         }
-
-        // 快速安全写 DOM（用 textContent，防 XSS + 比 innerHTML 快）
-        function setText(el, text) { if (el) el.textContent = text; }
-
-        async function updateSingleNasDisplay(url, index, outerSignal) {
-            const inst = nasInstances[url] || (nasInstances[url] = {});
-            const els = inst.elements;
+        async function updateRealtime() {
             try {
-                // P0-3: 15s 超时，且能被外层 AbortController 取消
-                const response = await fetchWithTimeout(
-                    NAS_WORKER_URL,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ url: url }),
-                        signal: outerSignal
-                    },
-                    NAS_FETCH_TIMEOUT
-                );
-                if (!response.ok) throw new Error(`代理请求失败: ${response.status}`);
-                const text = await response.text();
-                if (text.includes('Error:')) throw new Error(text.replace('Error: ', ''));
-                const now = Date.now();
-                const currentMetrics = parseNasRealtimeMetrics(text);
-
-                if (inst.previousCpuData) {
-                    const totalDiff = currentMetrics.cpu.total - inst.previousCpuData.total;
-                    const idleDiff = currentMetrics.cpu.idle - inst.previousCpuData.idle;
-                    setText(els?.cpuUsage, `${(totalDiff > 0 ? 100 * (1 - (idleDiff / totalDiff)) : 0).toFixed(1)}%`);
-                }
-                if (currentMetrics.memory.total > 0) {
-                    const memUsed = currentMetrics.memory.total - currentMetrics.memory.available;
-                    setText(els?.memUsage, `${(100 * memUsed / currentMetrics.memory.total).toFixed(1)}%`);
-                    setText(els?.memDetails, `${nas_formatBytes(memUsed, 2)}/${nas_formatBytes(currentMetrics.memory.total, 2)}`);
-                }
-                if (currentMetrics.temp !== null) {
-                    if (els?.tempCard) els.tempCard.style.display = 'flex';
-                    setText(els?.tempValue, `${currentMetrics.temp.toFixed(1)}°C`);
-                }
-                let upSpeed = 0, downSpeed = 0;
-                if (inst.previousNetData && inst.lastFetchTime) {
-                    const timeDelta = (now - inst.lastFetchTime) / 1000;
-                    if (timeDelta > 0) {
-                        downSpeed = Math.max(0, (currentMetrics.network.received - inst.previousNetData.received) / timeDelta);
-                        upSpeed = Math.max(0, (currentMetrics.network.transmitted - inst.previousNetData.transmitted) / timeDelta);
-                        setText(els?.netSpeed, `${nas_formatSpeed(upSpeed)} / ${nas_formatSpeed(downSpeed)}`);
-                    }
-                }
-                inst.upSpeed = upSpeed; inst.downSpeed = downSpeed;
-
-                const diskData = currentMetrics.filesystems['/etc/hostname'];
-                if (diskData && diskData.size > 0) {
-                    const diskUsed = diskData.size - diskData.avail;
-                    setText(els?.diskUsage, `${(100 * diskUsed / diskData.size).toFixed(1)}%`);
-                    setText(els?.diskDetails, `(${nas_formatBytes(diskUsed)}/${nas_formatBytes(diskData.size)})`);
-                }
-                if (currentMetrics.bootTime > 0) {
-                    inst.bootTimestamp = currentMetrics.bootTime;
-                    const bootDate = new Date(currentMetrics.bootTime * 1000);
-                    setText(els?.bootTime, `开机于: ${bootDate.toLocaleDateString()}`);
-                    // 拿到 bootTime 立即算一次 uptime，不用等下次 uptime 定时器
-                    if (els?.systemUptime) els.systemUptime.textContent = nas_formatUptime((Date.now() / 1000) - inst.bootTimestamp);
-                }
-                inst.previousCpuData = currentMetrics.cpu;
-                inst.previousNetData = currentMetrics.network;
-                inst.lastFetchTime = now;
-                setText(els?.statusText, `上次更新: ${new Date().toLocaleTimeString()}`);
-                setText(els?.errorText, '');
-            } catch (error) {
-                if (error.name === 'AbortError') return; // 被取消，不打印不置错
-                console.error(`更新NAS[${url}]状态失败:`, error);
-                setText(els?.errorText, `错误: ${error.message}`);
-                inst.upSpeed = 0; inst.downSpeed = 0;
-            }
-        }
-
-        function updateAllUptimes() {
-            const nowSec = Date.now() / 1000;
-            for (let i = 0; i < nasUrlList.length; i++) {
-                const url = nasUrlList[i];
-                const inst = nasInstances[url];
-                if (!inst || !inst.bootTimestamp || inst.bootTimestamp <= 0) continue;
-                // P1-4: 走缓存引用，不再 getElementById
-                const el = inst.elements?.systemUptime || document.getElementById(`nas-system-uptime-${i}`);
-                if (el) el.textContent = nas_formatUptime(nowSec - inst.bootTimestamp);
-            }
-        }
-
-        function stopUpdatingAllNas() {
-            if (updateInterval) { clearInterval(updateInterval); updateInterval = null; }
-            // P0-3: 取消当前所有在飞请求
-            if (nasFetchAbortController) { try { nasFetchAbortController.abort(); } catch (e) {} nasFetchAbortController = null; }
-        }
-
-        function startUpdatingAllNas() {
-            stopUpdatingAllNas();
-            const updateAll = async () => {
-                // P0-3: 每次循环先 abort 掉上次可能残留的，再创建新的
-                if (nasFetchAbortController) { try { nasFetchAbortController.abort(); } catch (e) {} }
-                nasFetchAbortController = new AbortController();
-                // P0-3: 并发限流 3 个，避免同域名连接池打满
-                await promiseAllLimited(nasUrlList, NAS_CONCURRENT_LIMIT, (url, idx) =>
-                    updateSingleNasDisplay(url, idx, nasFetchAbortController.signal)
-                );
+                const devs = await fetchRealtime();
+                nasDevices = devs;
+                renderRealtimeCards();
                 totalSpeeds = { up: 0, down: 0 };
-                for (const url of nasUrlList) {
-                    const inst = nasInstances[url];
-                    if (inst) {
-                        totalSpeeds.up += inst.upSpeed || 0;
-                        totalSpeeds.down += inst.downSpeed || 0;
-                    }
-                }
+                devs.forEach(d => { totalSpeeds.up += d.up || 0; totalSpeeds.down += d.down || 0; });
                 updatePageTitle();
-            };
-            updateAll();
-            updateInterval = setInterval(updateAll, currentPollInterval);
+            } catch (e) {
+                if (e.name === 'AbortError') return;
+                console.error('NAS 实时刷新失败:', e);
+            }
         }
-
+        function startRealtime() {
+            if (realtimeTimer) clearInterval(realtimeTimer);
+            updateRealtime();
+            realtimeTimer = setInterval(updateRealtime, currentPollInterval);
+        }
         // P1-6: 页面可见性变化时调整轮询频率
         function onVisibilityChange() {
             if (document.hidden) {
-                // 切后台：标题还原 + 轮询降级到 60s
                 if (document.title !== originalTitle) document.title = originalTitle;
-                if (currentPollInterval !== NAS_POLL_BACKGROUND) {
-                    currentPollInterval = NAS_POLL_BACKGROUND;
-                    startUpdatingAllNas();
-                }
+                if (currentPollInterval !== NAS_POLL_BACKGROUND) { currentPollInterval = NAS_POLL_BACKGROUND; startRealtime(); }
             } else {
-                // 切回前台：立即补刷一次 + 恢复 10s
-                if (currentPollInterval !== NAS_POLL_INTERVAL) {
-                    currentPollInterval = NAS_POLL_INTERVAL;
-                    startUpdatingAllNas();
-                } else {
-                    // 即使间隔没变，用户切回来也应该让标题和状态立刻新
-                    updatePageTitle();
-                }
+                if (currentPollInterval !== NAS_POLL_INTERVAL) { currentPollInterval = NAS_POLL_INTERVAL; startRealtime(); }
+                else updatePageTitle();
             }
         }
         document.addEventListener('visibilitychange', onVisibilityChange);
 
+        // ============ 设置弹窗：设备注册/注销（写入服务器 KV） ============
+        async function postJson(url, body) {
+            try {
+                const res = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 15000);
+                return await res.json().catch(() => ({}));
+            } catch (e) { return { ok: false, error: e.message }; }
+        }
+        async function loadDeviceList() {
+            try {
+                const res = await fetchWithTimeout(NAS_API.index, { cache: 'no-store' }, 15000);
+                const data = res.ok ? await res.json() : {};
+                return (data && Array.isArray(data.devices)) ? data.devices : [];
+            } catch (e) { return []; }
+        }
+        async function renderUrlListInModal() {
+            const listContainer = document.getElementById('nas-url-list');
+            if (!listContainer) return;
+            listContainer.innerHTML = '';
+            const devices = await loadDeviceList();
+            if (!devices.length) {
+                listContainer.textContent = '（暂无设备，可在下方添加 metrics 链接）';
+                return;
+            }
+            const frag = document.createDocumentFragment();
+            devices.forEach((dev) => {
+                const item = document.createElement('div');
+                item.className = 'nas-url-item';
+                const span = document.createElement('span');
+                span.setAttribute('title', dev.url || '');
+                span.textContent = `${dev.id}  ${dev.url || ''}`;
+                const btn = document.createElement('button');
+                btn.className = 'delete-nas-button';
+                btn.setAttribute('data-device', dev.id);
+                btn.textContent = '删除';
+                item.appendChild(span); item.appendChild(btn);
+                frag.appendChild(item);
+            });
+            listContainer.appendChild(frag);
+        }
         function setupSettingsModal() {
             const icon = document.getElementById('settings-icon');
             const overlay = document.getElementById('settings-modal-overlay');
@@ -840,45 +699,31 @@ document.addEventListener('DOMContentLoaded', function() {
             icon.addEventListener('click', openModal);
             closeButton.addEventListener('click', closeModal);
             overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
-            addButton.addEventListener('click', () => {
+            addButton.addEventListener('click', async () => {
                 const newUrl = urlInput.value.trim();
-                if (newUrl && !nasUrlList.includes(newUrl)) {
-                    nasUrlList.push(newUrl);
-                    saveUrlsToStorage(nasUrlList);
-                    renderUrlListInModal();
-                    renderNasContainers();
-                    startUpdatingAllNas();
+                if (!newUrl) return;
+                const r = await postJson(NAS_API.register, { url: newUrl });
+                if (r.ok) {
                     urlInput.value = '';
+                    renderUrlListInModal();
+                    updateRealtime();
+                    if (typeof loadNasMonitoring === 'function') loadNasMonitoring();
+                } else {
+                    alert('登记失败: ' + (r.error || '未知错误'));
                 }
             });
-            urlListContainer.addEventListener('click', (e) => {
-                if (e.target.classList.contains('delete-nas-button')) {
-                    const indexToRemove = parseInt(e.target.getAttribute('data-index'), 10);
-                    const urlToRemove = nasUrlList[indexToRemove];
-                    if (nasInstances[urlToRemove]) delete nasInstances[urlToRemove];
-                    nasUrlList.splice(indexToRemove, 1);
-                    saveUrlsToStorage(nasUrlList);
-                    // 若删的是默认 URL，记录到 nasRemovedUrls，避免下次加载被自动合并回来
-                    if (DEFAULT_NAS_URLS.includes(urlToRemove)) {
-                        const removed = getRemovedDefaults();
-                        if (!removed.includes(urlToRemove)) {
-                            removed.push(urlToRemove);
-                            saveRemovedDefaults(removed);
-                        }
-                    }
-                    renderUrlListInModal();
-                    renderNasContainers();
-                    startUpdatingAllNas();
-                }
+            urlListContainer.addEventListener('click', async (e) => {
+                const btn = e.target.closest('.delete-nas-button');
+                if (!btn) return;
+                const deviceId = btn.getAttribute('data-device');
+                await postJson(NAS_API.unregister, { device_id: deviceId });
+                renderUrlListInModal();
+                updateRealtime();
+                if (typeof loadNasMonitoring === 'function') loadNasMonitoring();
             });
         }
 
-        nasUrlList = getUrlsFromStorage();
-        renderNasContainers();
-        startUpdatingAllNas();
-        // P1-4: 从 1000ms 改到 60000ms，省 ~60 倍的 DOM 查询开销
-        updateAllUptimes(); // 启动时先跑一次
-        uptimeInterval = setInterval(updateAllUptimes, NAS_UPTIME_INTERVAL);
+        startRealtime();
         setupSettingsModal();
     }
 

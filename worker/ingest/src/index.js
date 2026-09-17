@@ -68,18 +68,20 @@ export default {
 };
 
 async function resolveSources(env) {
-	// 单源（阶段1）优先
-	if (env.METRICS_URL) return [env.METRICS_URL];
-	// 多源（阶段3）：读 KV device:list -> dev:meta:{id}.url
+	// 总是合并 device:list 里登记的多源（含前端/断链/新增），再补默认单源，按 url 去重
+	const urls = [];
+	const seen = new Set();
+	const add = u => { if (u && !seen.has(u)) { seen.add(u); urls.push(u); } };
+
 	const raw = await env.KV.get('device:list', 'text');
 	if (raw) {
-		try {
-			const ids = JSON.parse(raw);
-			const metas = await Promise.all(ids.map(id => env.KV.get(`dev:meta:${id}`, 'json')));
-			return metas.filter(m => m && m.url).map(m => m.url);
-		} catch (e) { /* 解析失败退回空 */ }
+		let ids = [];
+		try { ids = JSON.parse(raw); } catch (e) { /* 忽略 */ }
+		const metas = await Promise.all(ids.map(id => env.KV.get(`dev:meta:${id}`, 'json')));
+		for (const m of metas) if (m && m.url) add(m.url);
 	}
-	return [];
+	if (env.METRICS_URL) add(env.METRICS_URL);
+	return urls;
 }
 
 async function ingestOne(url, env, nowMs) {
@@ -140,8 +142,8 @@ async function ingestOne(url, env, nowMs) {
 		temp: m.temp == null ? null : round(m.temp, 1),
 	}));
 
-	// 更新设备列表（KV，前端下拉/checkbox 用）
-	await addToDeviceList(env, deviceId);
+	// 更新设备列表 + 元数据（KV，前端 index/realtime 读 device:list 和 dev:meta）
+	await addToDeviceList(env, deviceId, url);
 
 	// 保存本次原始计数器，作为下次基准（BigInt 以字符串保存，避免精度丢失）
 	await env.KV.put(`dev:prev:${deviceId}`, JSON.stringify({
@@ -178,7 +180,16 @@ function safeRate(curStr, prevStr, dtSec) {
 	} catch (e) { return 0; }
 }
 
-async function addToDeviceList(env, deviceId) {
+async function addToDeviceList(env, deviceId, url) {
+	// 写入元数据，保证前端 /api/nas/index 能拿到 url（否则设备会被过滤掉）
+	if (url) {
+		const meta = (await env.KV.get(`dev:meta:${deviceId}`, 'json')) || {};
+		if (meta.url !== url) {
+			meta.id = deviceId; meta.url = url;
+			if (!meta.added) meta.added = Math.floor(Date.now() / 1000);
+			await env.KV.put(`dev:meta:${deviceId}`, JSON.stringify(meta));
+		}
+	}
 	const raw = await env.KV.get('device:list', 'text');
 	let list = [];
 	try { if (raw) list = JSON.parse(raw); } catch (e) {}
