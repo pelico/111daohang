@@ -570,11 +570,12 @@ document.addEventListener('DOMContentLoaded', function() {
             index: '/api/nas/index',
             realtime: '/api/nas/realtime',
             history: '/api/nas/history',
+            probe: '/api/nas/probe',
             register: '/api/nas/register',
             unregister: '/api/nas/unregister'
         };
-        const NAS_POLL_INTERVAL = 10000;     // 前台 10s
-        const NAS_POLL_BACKGROUND = 60000;   // 后台 60s（P1-6）
+        const NAS_POLL_INTERVAL = 3000;     // 前台 3s：probe 即时抓源，前端差分算速率/CPU
+        const NAS_POLL_BACKGROUND = 60000;  // 后台/隐藏 60s：改读 KV 快照，省资源
         const originalTitle = document.title;
 
         let realtimeTimer = null;
