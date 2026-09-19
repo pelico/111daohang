@@ -137,6 +137,7 @@ async function ingestOne(url, env, nowMs) {
 	// 实时快照（前端零计算读这里）
 	await env.KV.put(`device:last:${deviceId}`, JSON.stringify({
 		device_id: deviceId, url, ts: nowSec,
+		bootTime: m.bootTime || 0,
 		cpu: cpuPct == null ? null : round(cpuPct, 1),
 		mem: m.memPct == null ? null : round(m.memPct, 1),
 		up: round(upBps), down: round(downBps),

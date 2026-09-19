@@ -594,6 +594,16 @@ document.addEventListener('DOMContentLoaded', function() {
             return `${parseFloat(v.toFixed(decimals))} ${sizes[i]}`;
         }
         function nas_formatSpeed(bytesPerSecond, decimals = 2) { return nas_formatSize(bytesPerSecond, ['B/s','KB/s','MB/s','GB/s'], decimals); }
+        function nas_formatUptime(bootTime, nowTs) {
+            if (!bootTime || bootTime <= 0 || !nowTs) return null;
+            let s = Math.max(0, nowTs - bootTime);
+            const d = Math.floor(s / 86400); s %= 86400;
+            const h = Math.floor(s / 3600); s %= 3600;
+            const m = Math.floor(s / 60);
+            if (d > 0) return `${d}天${h}时`;
+            if (h > 0) return `${h}时${m}分`;
+            return `${Math.max(1, m)}分`;
+        }
 
         // ============ 顶部实时卡片 ============
         async function fetchRealtime() {
@@ -615,7 +625,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const fsTile = (fsPct != null)
                 ? `<div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-hdd"></i></div><div class="nas-metric-details"><span class="nas-metric-label">存储</span><div class="nas-metric-value">${fsPct.toFixed(1)}%</div></div></div>`
                 : '';
-            return `<div class="nas-card-container" data-device="${escapeHtml(dev.device_id||'')}" data-url="${escapeHtml(dev.url||'')}"> <div class="nas-card-header"><span class="nas-card-title">${label}</span><span class="nas-card-updated">${dev.ts?('更新: '+new Date(dev.ts*1000).toLocaleTimeString()):'等待数据...'}</span></div> <div class="nas-card-grid"> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-microchip"></i></div><div class="nas-metric-details"><span class="nas-metric-label">CPU</span><div class="nas-metric-value">${dev.cpu==null?'--':Number(dev.cpu).toFixed(1)+'%'}</div></div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-memory"></i></div><div class="nas-metric-details"><span class="nas-metric-label">内存</span><div class="nas-metric-value">${dev.mem==null?'--':Number(dev.mem).toFixed(1)+'%'}</div></div></div> ${tempTile} ${fsTile} <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-exchange-alt"></i></div><div class="nas-metric-details"><span class="nas-metric-label">上传/下载</span><div class="nas-metric-value small-font">${nas_formatSpeed(dev.up||0)} / ${nas_formatSpeed(dev.down||0)}</div></div></div> </div> </div>`;
+            const uptimeText = nas_formatUptime(dev.bootTime, dev.ts || Math.floor(Date.now() / 1000));
+            const uptimeLine = uptimeText ? `<div class="nas-metric-subvalue">已运行 ${uptimeText}</div>` : '';
+            return `<div class="nas-card-container" data-device="${escapeHtml(dev.device_id||'')}" data-url="${escapeHtml(dev.url||'')}"> <div class="nas-card-header"><span class="nas-card-title">${label}</span><span class="nas-card-updated">${dev.ts?('更新: '+new Date(dev.ts*1000).toLocaleTimeString()):'等待数据...'}</span></div> <div class="nas-card-grid"> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-microchip"></i></div><div class="nas-metric-details"><span class="nas-metric-label">CPU</span><div class="nas-metric-value">${dev.cpu==null?'--':Number(dev.cpu).toFixed(1)+'%'}</div>${uptimeLine}</div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-memory"></i></div><div class="nas-metric-details"><span class="nas-metric-label">内存</span><div class="nas-metric-value">${dev.mem==null?'--':Number(dev.mem).toFixed(1)+'%'}</div></div></div> ${tempTile} ${fsTile} <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-exchange-alt"></i></div><div class="nas-metric-details"><span class="nas-metric-label">上传/下载</span><div class="nas-metric-value small-font">${nas_formatSpeed(dev.up||0)} / ${nas_formatSpeed(dev.down||0)}</div></div></div> </div> </div>`;
         }
         function renderRealtimeCards() {
             const container = document.getElementById('nas-grid-container');
@@ -672,6 +684,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         device_id: dev.device_id,
                         url: dev.url,
                         ts: dev.ts,
+                        bootTime: dev.bootTime || 0,
                         cpu: cpuPct != null ? Math.round(cpuPct * 10) / 10 : null,
                         mem: dev.mem,
                         memTotal: dev.memTotal || 0,
