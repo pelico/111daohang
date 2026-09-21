@@ -4,6 +4,23 @@
 import { parseVmMetrics } from '../../_lib/parse.js';
 
 const FETCH_TIMEOUT_MS = 8000;
+// 物理合理性上限（与 ingest 一致）：温度合理范围
+const TEMP_MIN = -20, TEMP_MAX = 120;
+
+// 百分比 clamp 到 [0,100]；非法返回 null
+function clampPct(v) {
+	if (v == null || !Number.isFinite(v)) return null;
+	return Math.round(Math.max(0, Math.min(100, v)) * 10) / 10;
+}
+
+// 温度校验：先按摄氏度；超出可能为毫摄氏度，÷1000 后若合理则采纳；否则视为异常
+function sanitizeTemp(v) {
+	if (v == null || !Number.isFinite(v)) return null;
+	if (v >= TEMP_MIN && v <= TEMP_MAX) return Math.round(v * 10) / 10;
+	const c = v / 1000;
+	if (c >= TEMP_MIN && c <= TEMP_MAX) return Math.round(c * 10) / 10;
+	return null;
+}
 
 export async function onRequestGet(ctx) {
 	const env = ctx.env;
@@ -34,9 +51,9 @@ export async function onRequestGet(ctx) {
 				bootTime: m.bootTime || 0,
 				cpu: { idle: m.cpu.idle, total: m.cpu.total, idleValid: !!(m.cpu.idleValid && m.cpu.total > 0) },
 				net: { recv: String(m.net.recv), sent: String(m.net.sent) },
-				mem: m.memPct == null ? null : Math.round(m.memPct * 10) / 10,
+				mem: clampPct(m.memPct),
 				memTotal: m.memTotal || 0,
-				temp: m.temp == null ? null : Math.round(m.temp * 10) / 10,
+				temp: sanitizeTemp(m.temp),
 				fs: m.fs.total > 0 ? { total: Math.round(m.fs.total), avail: Math.round(m.fs.avail) } : null,
 			};
 		} catch (e) {

@@ -32,6 +32,11 @@ export async function onRequestGet(ctx) {
 				        ROUND(AVG(temp),1) temp
 				 FROM samples
 				 WHERE device_id IN (${place}) AND ts >= ? AND ts <= ?
+				   AND (cpu IS NULL OR (cpu >= 0 AND cpu <= 100))
+				   AND (mem IS NULL OR (mem >= 0 AND mem <= 100))
+				   AND (up_bps IS NULL OR (up_bps >= 0 AND up_bps <= 5000000000))
+				   AND (down_bps IS NULL OR (down_bps >= 0 AND down_bps <= 5000000000))
+				   AND (temp IS NULL OR (temp >= -20 AND temp <= 120))
 				 GROUP BY device_id, CAST(ts / ? AS INTEGER)
 				 ORDER BY ts ASC`
 			).bind(bucket, ...devices, start, nowSec, bucket).all()).results;

@@ -11,6 +11,9 @@ import { parseVmMetrics } from './parse.js';
 const FETCH_TIMEOUT_MS = 15000;
 // 历史采样在 D1 的保留天数（与每日清理 Cron 对齐，仅作写前兜底）
 const RETENTION_DAYS = 30;
+// 物理上限：网络速率 > 5GB/s（≈40Gbps）视为"不可能"读数，丢弃；温度合理范围
+const MAX_NET_BPS = 5e9;
+const TEMP_MIN = -20, TEMP_MAX = 120;
 
 let lastRun = 0;
 
@@ -111,6 +114,8 @@ async function ingestOne(url, env, nowMs) {
 			}
 		}
 	}
+	const memPct = clampPct(m.memPct);
+	const tempC = sanitizeTemp(m.temp);
 
 	// 写 D1 历史（UPSERT，主键 device_id+ts）
 	await env.DB.prepare(
@@ -119,9 +124,9 @@ async function ingestOne(url, env, nowMs) {
 	)
 		.bind(deviceId, nowSec,
 			cpuPct == null ? null : round(cpuPct, 1),
-			m.memPct == null ? null : round(m.memPct, 1),
+			memPct,
 			round(upBps), round(downBps),
-			m.temp == null ? null : round(m.temp, 1))
+			tempC)
 		.run();
 
 	// 登记设备表（自动发现 / 换域名识别同一台）
@@ -139,9 +144,9 @@ async function ingestOne(url, env, nowMs) {
 		device_id: deviceId, url, ts: nowSec,
 		bootTime: m.bootTime || 0,
 		cpu: cpuPct == null ? null : round(cpuPct, 1),
-		mem: m.memPct == null ? null : round(m.memPct, 1),
+		mem: memPct,
 		up: round(upBps), down: round(downBps),
-		temp: m.temp == null ? null : round(m.temp, 1),
+		temp: tempC,
 		fs: m.fs.total > 0 ? { total: Math.round(m.fs.total), avail: Math.round(m.fs.avail) } : null,
 	}));
 
@@ -185,16 +190,31 @@ function deviceIdFor(url, hostname) {
 	return h.split('.')[0] || h;
 }
 
-// 用原始计数差值算速率（B/s）；异常（绕回/为负）返回 0，不污染图表
+// 用原始计数差值算速率（B/s）；异常（绕回/为负/超物理上限）返回 0，不污染图表
 function safeRate(curStr, prevStr, dtSec) {
 	try {
 		const cur = BigInt(curStr), prev = BigInt(prevStr);
 		if (cur < prev) return 0;
 		const diff = cur - prev;
 		const perSec = Number(diff) / dtSec;   // Number 转换在速率量级下安全
-		if (!Number.isFinite(perSec) || perSec < 0) return 0;
+		if (!Number.isFinite(perSec) || perSec < 0 || perSec > MAX_NET_BPS) return 0;
 		return perSec;
 	} catch (e) { return 0; }
+}
+
+// 百分比 clamp 到 [0,100]；非法返回 null
+function clampPct(v) {
+	if (v == null || !Number.isFinite(v)) return null;
+	return round(Math.max(0, Math.min(100, v)), 1);
+}
+
+// 温度合理性校验：先按摄氏度判断；超出范围可能为毫摄氏度（node_exporter 常见），÷1000 后若合理则采纳；否则视为传感器异常
+function sanitizeTemp(v) {
+	if (v == null || !Number.isFinite(v)) return null;
+	if (v >= TEMP_MIN && v <= TEMP_MAX) return round(v, 1);
+	const c = v / 1000;
+	if (c >= TEMP_MIN && c <= TEMP_MAX) return round(c, 1);
+	return null;
 }
 
 async function addToDeviceList(env, deviceId, url) {

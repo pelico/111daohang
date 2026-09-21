@@ -576,6 +576,7 @@ document.addEventListener('DOMContentLoaded', function() {
         };
         const NAS_POLL_INTERVAL = 5000;     // 前台 5s：probe 即时抓源，前端差分算速率/CPU
         const NAS_POLL_BACKGROUND = 60000;  // 后台/隐藏 60s：改读 KV 快照，省资源
+        const MAX_NET_BPS = 5e9;            // 物理上限：速率 >5GB/s 视为"不可能"读数，丢弃
         const originalTitle = document.title;
 
         let realtimeTimer = null;
@@ -621,7 +622,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const tempTile = (dev.temp != null)
                 ? `<div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-thermometer-half"></i></div><div class="nas-metric-details"><span class="nas-metric-label">温度</span><div class="nas-metric-value">${Number(dev.temp).toFixed(1)}°C</div></div></div>`
                 : '';
-            const fsPct = (dev.fs && dev.fs.total > 0) ? ((dev.fs.total - dev.fs.avail) / dev.fs.total * 100) : null;
+            const fsPct = (dev.fs && dev.fs.total > 0) ? Math.max(0, Math.min(100, (dev.fs.total - dev.fs.avail) / dev.fs.total * 100)) : null;
             const fsTile = (fsPct != null)
                 ? `<div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-hdd"></i></div><div class="nas-metric-details"><span class="nas-metric-label">存储</span><div class="nas-metric-value">${fsPct.toFixed(1)}%</div></div></div>`
                 : '';
@@ -662,11 +663,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                             try {
                                 const recvNew = BigInt(dev.net.recv), recvOld = BigInt(prev.netRecv);
-                                if (recvNew >= recvOld) downSpeed = Number(recvNew - recvOld) / dt;
+                                if (recvNew >= recvOld) { const d = Number(recvNew - recvOld) / dt; if (d <= MAX_NET_BPS) downSpeed = d; }
                             } catch(e) {}
                             try {
                                 const sentNew = BigInt(dev.net.sent), sentOld = BigInt(prev.netSent);
-                                if (sentNew >= sentOld) upSpeed = Number(sentNew - sentOld) / dt;
+                                if (sentNew >= sentOld) { const d = Number(sentNew - sentOld) / dt; if (d <= MAX_NET_BPS) upSpeed = d; }
                             } catch(e) {}
                         }
                     }
