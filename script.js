@@ -548,6 +548,14 @@ document.addEventListener('DOMContentLoaded', function() {
         return Object.keys(ma).filter(k => mb[k] != null).sort((a, b) => a - b)
             .map(k => ({ t: Number(k) * 3600000, a: ma[k], b: mb[k] }));
     }
+    // ④ tooltip 标题：统一显示"月-日 时:分"
+    function tooltipTitle(items) {
+        const t = items && items[0] && items[0].parsed && items[0].parsed.x;
+        if (!t) return '';
+        const d = new Date(t);
+        const p = n => String(n).padStart(2, '0');
+        return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
     function displayTrendCharts(historyData) {
         const container = document.getElementById('weather-charts-container');
         if (!container) return;
@@ -568,15 +576,36 @@ document.addEventListener('DOMContentLoaded', function() {
             const spanH = (Math.max(...tsList) - Math.min(...tsList)) / 3600000;
             const spanLabel = spanH <= 26 ? '近24小时' : (spanH <= 80 ? '近3天' : '近7天');
             const sparse = records.length < 60;
+            // ④ X 轴刻度按跨度自适应：24h 每 2h，3 天每 6h，7 天按天，避免刻度拥挤
+            const xScale = {
+                type: 'time',
+                time: {
+                    unit: spanH <= 26 ? 'hour' : (spanH <= 80 ? 'hour' : 'day'),
+                    stepSize: spanH <= 26 ? 2 : (spanH <= 80 ? 6 : 1),
+                    tooltipFormat: 'MM-dd HH:mm',
+                    displayFormats: { hour: 'HH:mm', day: 'MM-dd' },
+                },
+                title: { display: false },
+                ticks: { font: { size: 10 } },
+            };
 
             // ② 偏差：预报(HefengAPI) - 实测(ESP8266)，按小时桶对齐
             const fore = bySource['HefengAPI'] || [];
             const actual = bySource['ESP8266'] || [];
-            let latestDiff = null;
+            let latestDiff = null, avgDiff = null;
             if (fore.length && actual.length) {
                 const aligned = alignByHour(fore, actual);
-                if (aligned.length) latestDiff = +(aligned[aligned.length - 1].a - aligned[aligned.length - 1].b).toFixed(1);
+                if (aligned.length) {
+                    latestDiff = +(aligned[aligned.length - 1].a - aligned[aligned.length - 1].b).toFixed(1);
+                    avgDiff = +(aligned.reduce((s, p) => s + (p.a - p.b), 0) / aligned.length).toFixed(1);
+                }
             }
+            // ④ 单数据源提示 + 均差/最新偏差摘要
+            const srcHint = !(fore.length && actual.length) ? (fore.length ? ' · 仅API数据' : (actual.length ? ' · 仅设备数据' : '')) : '';
+            const signed = v => (v > 0 ? `+${v.toFixed(1)}` : `${v.toFixed(1)}`);
+            const diffText = (latestDiff != null || avgDiff != null)
+                ? ` · 均差 ${avgDiff == null ? '—' : signed(avgDiff)}°C · 最新 ${latestDiff == null ? '—' : signed(latestDiff)}°C`
+                : '';
 
             // ---------- 主图：温度对比 + 偏差填充带 ----------
             const mainBox = document.createElement('div');
@@ -611,7 +640,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     borderDash: [3, 4],
                     borderWidth: 1.2,
                     tension: 0.3,
-                    pointRadius: 0,
+                    pointRadius: sparse ? 2 : 0,
                     fill: false,
                     yAxisID: 'y',
                 });
@@ -628,7 +657,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (warm.length) tempDatasets.push({ label: '偏差(偏暖)', data: warm, borderWidth: 0, backgroundColor: 'rgba(255,99,132,0.35)', fill: { target: 'origin' }, pointRadius: 0, yAxisID: 'y1' });
                 if (cool.length) tempDatasets.push({ label: '偏差(偏冷)', data: cool.map(p => ({ x: p.x, y: -p.y })), borderWidth: 0, backgroundColor: 'rgba(54,162,235,0.35)', fill: { target: 'origin' }, pointRadius: 0, yAxisID: 'y1' });
             }
-            const diffText = latestDiff != null ? (latestDiff > 0 ? ` · 最新：预报偏暖 +${latestDiff}°C` : ` · 最新：预报偏冷 ${latestDiff}°C`) : '';
             const mainC = new Chart(mainCanvas, {
                 type: 'line',
                 data: { datasets: tempDatasets },
@@ -637,12 +665,24 @@ document.addEventListener('DOMContentLoaded', function() {
                     maintainAspectRatio: false,
                     interaction: { mode: 'x', intersect: false },
                     plugins: {
-                        title: { display: true, text: `${cityName} - 温度对比 · ${spanLabel}${diffText}`, font: { size: isMobile ? 13 : 15 } },
+                        title: { display: true, text: `${cityName} - 温度对比 · ${spanLabel}${srcHint}${diffText}`, font: { size: isMobile ? 13 : 15 } },
                         legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 }, boxWidth: 10, boxHeight: 10, filter: item => !String(item.text).startsWith('偏差') } },
-                        tooltip: { enabled: !isMobile, mode: 'x', intersect: false },
+                        tooltip: {
+                            enabled: !isMobile,
+                            mode: 'x',
+                            intersect: false,
+                            callbacks: {
+                                title: tooltipTitle,
+                                label: ctx => {
+                                    const v = ctx.parsed.y;
+                                    if (v == null) return '';
+                                    return ` ${ctx.dataset.label}: ${v > 0 ? '+' : ''}${v.toFixed(1)}°C`;
+                                },
+                            },
+                        },
                     },
                     scales: {
-                        x: { type: 'time', time: { unit: 'hour', tooltipFormat: 'HH:mm', displayFormats: { hour: 'HH:mm' } }, title: { display: false }, ticks: { font: { size: 10 } } },
+                        x: xScale,
                         y: { display: true, position: 'left', title: { display: !isMobile, text: '温度 (°C)' }, ticks: { font: { size: 10 } } },
                         y1: { display: true, position: 'right', title: { display: !isMobile, text: '偏差 (°C)' }, beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } },
                     },
@@ -664,12 +704,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     maintainAspectRatio: false,
                     interaction: { mode: 'x', intersect: false },
                     plugins: {
-                        title: { display: true, text: `${cityName} - 湿度对比 · ${spanLabel}`, font: { size: isMobile ? 12 : 13 } },
+                        title: { display: true, text: `${cityName} - 湿度对比 · ${spanLabel}${srcHint}`, font: { size: isMobile ? 12 : 13 } },
                         legend: { display: false },
-                        tooltip: { enabled: !isMobile, mode: 'x', intersect: false },
+                        tooltip: {
+                            enabled: !isMobile,
+                            mode: 'x',
+                            intersect: false,
+                            callbacks: {
+                                title: tooltipTitle,
+                                label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y != null ? ctx.parsed.y.toFixed(0) : '-'}%`,
+                            },
+                        },
                     },
                     scales: {
-                        x: { type: 'time', time: { unit: 'hour', tooltipFormat: 'HH:mm', displayFormats: { hour: 'HH:mm' } }, title: { display: false }, ticks: { font: { size: 10 } } },
+                        x: xScale,
                         y: { display: true, position: 'left', title: { display: false, text: '湿度 (%)' }, suggestedMin: 0, suggestedMax: 100, ticks: { font: { size: 10 } } },
                     },
                 },
