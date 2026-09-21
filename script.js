@@ -385,9 +385,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const charts = [
             { key: 'cpu',  title: 'CPU 使用率 (%)', bps: false, begin0: true },
             { key: 'mem',  title: '内存使用 (%)',   bps: false, begin0: false },
+            { key: 'temp', title: '温度 (°C)',       bps: false, begin0: false },
             { key: 'up',   title: '上行速率',        bps: true,  begin0: true },
-            { key: 'down', title: '下行速率',        bps: true,  begin0: true },
-            { key: 'temp', title: '温度 (°C)',       bps: false, begin0: false }
+            { key: 'down', title: '下行速率',        bps: true,  begin0: true }
         ];
         charts.forEach((ch, ci) => {
             const datasets = [];

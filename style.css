@@ -90,6 +90,8 @@ body { background: var(--background); min-height: 100vh; padding: 20px; color: v
 .service-card.expanded .service-details { max-height: 500px; }
 .service-details-content { padding-top: 20px; border-top: 1px solid var(--border-color); margin-top: 20px; }
 .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 25px; margin-top: 30px; }
+/* 【已调整】NAS 历史趋势固定 3 列：CPU/内存/温度一行 + 上下行一行 */
+#nas-history-charts { grid-template-columns: repeat(3, 1fr); }
 .chart-container { background: var(--card-bg); border-radius: 16px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08); padding: 25px; }
 .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .chart-title { font-size: 18px; font-weight: 600; }
