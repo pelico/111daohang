@@ -607,25 +607,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 ? ` · 均差 ${avgDiff == null ? '—' : signed(avgDiff)}°C · 最新 ${latestDiff == null ? '—' : signed(latestDiff)}°C`
                 : '';
 
-            // ---------- 主图：温度对比 + 偏差填充带 ----------
+            // ---------- 主图：温度(实线) + 湿度(虚线) 合并对比 ----------
             const mainBox = document.createElement('div');
             mainBox.className = 'weather-chart-container';
             const mainCanvas = document.createElement('canvas');
             mainBox.appendChild(mainCanvas);
             container.appendChild(mainBox);
 
-            const tempDatasets = [];
-            const humDatasets = [];
+            const datasets = [];
             for (const s of sourceNames) {
                 const st = sourceStyles[s] || sourceStyles.default;
                 const sd = bySource[s];
                 const isFore = s === 'HefengAPI';
                 const isAct = s === 'ESP8266';
-                tempDatasets.push({
+                // 温度：实线，按数据源颜色区分（预报红/实测蓝）
+                datasets.push({
                     label: isFore ? '预报温度' : (isAct ? '实测温度' : `温度 - ${st.label}`),
                     data: sd.map(d => ({ x: new Date(d.observation_time), y: d.temperature })),
                     borderColor: st.tempColor,
-                    borderDash: isAct ? [] : [5, 4],          // 实测实线，预报/其他虚线
                     borderWidth: isAct ? 2 : 1.5,
                     tension: 0.3,
                     pointRadius: sparse ? 2 : 0,
@@ -633,40 +632,35 @@ document.addEventListener('DOMContentLoaded', function() {
                     fill: false,
                     yAxisID: 'y',
                 });
-                humDatasets.push({
+                // 湿度：虚线，按数据源颜色区分（预报橙/实测绿）
+                datasets.push({
                     label: isFore ? '预报湿度' : (isAct ? '实测湿度' : `湿度 - ${st.label}`),
                     data: sd.map(d => ({ x: new Date(d.observation_time), y: d.humidity })),
                     borderColor: st.humidColor,
-                    borderDash: [3, 4],
-                    borderWidth: 1.2,
+                    borderDash: [5, 4],
+                    borderWidth: 1.4,
                     tension: 0.3,
                     pointRadius: sparse ? 2 : 0,
                     fill: false,
-                    yAxisID: 'y',
+                    yAxisID: 'y1',
                 });
             }
-            // 偏差填充带：预报-实测，偏暖暖色/偏冷冷色，挂右轴从 0 起
-            if (fore.length && actual.length) {
-                const aligned = alignByHour(fore, actual);
-                const warm = [], cool = [];
-                for (const p of aligned) {
-                    const d = +(p.a - p.b).toFixed(2);
-                    if (d > 0) warm.push({ x: new Date(p.t), y: d });
-                    else if (d < 0) cool.push({ x: new Date(p.t), y: Math.abs(d) });
-                }
-                if (warm.length) tempDatasets.push({ label: '偏差(偏暖)', data: warm, borderWidth: 0, backgroundColor: 'rgba(255,99,132,0.35)', fill: { target: 'origin' }, pointRadius: 0, yAxisID: 'y1' });
-                if (cool.length) tempDatasets.push({ label: '偏差(偏冷)', data: cool.map(p => ({ x: p.x, y: -p.y })), borderWidth: 0, backgroundColor: 'rgba(54,162,235,0.35)', fill: { target: 'origin' }, pointRadius: 0, yAxisID: 'y1' });
+            // ④ 偏差可视化：实测温度向预报温度区间填充——实测高于预报(预报偏冷)蓝、低于预报(预报偏暖)红
+            const foreIdx = datasets.findIndex(ds => ds.label === '预报温度');
+            const actIdx = datasets.findIndex(ds => ds.label === '实测温度');
+            if (foreIdx >= 0 && actIdx >= 0) {
+                datasets[actIdx].fill = { target: foreIdx, above: 'rgba(54,162,235,0.18)', below: 'rgba(255,99,132,0.18)' };
             }
             const mainC = new Chart(mainCanvas, {
                 type: 'line',
-                data: { datasets: tempDatasets },
+                data: { datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { mode: 'x', intersect: false },
                     plugins: {
-                        title: { display: true, text: `${cityName} - 温度对比 · ${spanLabel}${srcHint}${diffText}`, font: { size: isMobile ? 13 : 15 } },
-                        legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 }, boxWidth: 10, boxHeight: 10, filter: item => !String(item.text).startsWith('偏差') } },
+                        title: { display: true, text: `${cityName} - 温度·湿度对比 · ${spanLabel}${srcHint}${diffText}`, font: { size: isMobile ? 13 : 15 } },
+                        legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 }, boxWidth: 10, boxHeight: 10 } },
                         tooltip: {
                             enabled: !isMobile,
                             mode: 'x',
@@ -676,7 +670,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                 label: ctx => {
                                     const v = ctx.parsed.y;
                                     if (v == null) return '';
-                                    return ` ${ctx.dataset.label}: ${v > 0 ? '+' : ''}${v.toFixed(1)}°C`;
+                                    return ctx.dataset.yAxisID === 'y1'
+                                        ? ` ${ctx.dataset.label}: ${v.toFixed(0)}%`
+                                        : ` ${ctx.dataset.label}: ${v.toFixed(1)}°C`;
                                 },
                             },
                         },
@@ -684,45 +680,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     scales: {
                         x: xScale,
                         y: { display: true, position: 'left', title: { display: !isMobile, text: '温度 (°C)' }, ticks: { font: { size: 10 } } },
-                        y1: { display: true, position: 'right', title: { display: !isMobile, text: '偏差 (°C)' }, beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } },
+                        y1: { display: true, position: 'right', title: { display: !isMobile, text: '湿度 (%)' }, suggestedMin: 0, suggestedMax: 100, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } },
                     },
                 },
             });
-            registerChart(`weather-${cityName}-temp`, mainC);
-
-            // ---------- 副图：湿度对比（弱化） ----------
-            const humBox = document.createElement('div');
-            humBox.className = 'weather-chart-container weather-chart-sub';
-            const humCanvas = document.createElement('canvas');
-            humBox.appendChild(humCanvas);
-            container.appendChild(humBox);
-            const humC = new Chart(humCanvas, {
-                type: 'line',
-                data: { datasets: humDatasets },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { mode: 'x', intersect: false },
-                    plugins: {
-                        title: { display: true, text: `${cityName} - 湿度对比 · ${spanLabel}${srcHint}`, font: { size: isMobile ? 12 : 13 } },
-                        legend: { display: false },
-                        tooltip: {
-                            enabled: !isMobile,
-                            mode: 'x',
-                            intersect: false,
-                            callbacks: {
-                                title: tooltipTitle,
-                                label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y != null ? ctx.parsed.y.toFixed(0) : '-'}%`,
-                            },
-                        },
-                    },
-                    scales: {
-                        x: xScale,
-                        y: { display: true, position: 'left', title: { display: false, text: '湿度 (%)' }, suggestedMin: 0, suggestedMax: 100, ticks: { font: { size: 10 } } },
-                    },
-                },
-            });
-            registerChart(`weather-${cityName}-hum`, humC);
+            registerChart(`weather-${cityName}-mix`, mainC);
         }
     }
 
