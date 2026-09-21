@@ -127,7 +127,9 @@ body { background: var(--background); min-height: 100vh; padding: 20px; color: v
 .weather-card .weather-text { font-size: 1.3em; font-weight: 600; color: var(--text-color); }
 .weather-card .timestamp { font-size: 0.8em; color: var(--text-light); }
 #weather-charts-container { display: flex; flex-direction: column; gap: 25px; align-items: center; }
-.weather-chart-container { width: 100%; background: var(--card-bg); padding: 25px; border-radius: 16px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08); }
+.weather-chart-container { width: 100%; height: 340px; background: var(--card-bg); padding: 25px; border-radius: 16px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08); }
+/* 湿度副图：弱化视觉权重，更矮更紧凑 */
+.weather-chart-container.weather-chart-sub { height: 220px; margin-top: -15px; padding: 15px; }
 
 /* --- 通用状态 (加载/空/错误) --- */
 .loading-state, .empty-state, .error-state { text-align: center; padding: 40px 20px; color: var(--text-light); }
@@ -215,7 +217,8 @@ footer { text-align: center; margin-top: 60px; padding: 25px; color: rgba(255, 2
     .weather-card { padding: 15px; min-width: auto; }
     .weather-card h2 { font-size: 1.5rem; }
     .weather-card p { font-size: 1rem; }
-    .weather-chart-container { padding: 10px; }
+    .weather-chart-container { padding: 10px; height: 300px; }
+    .weather-chart-container.weather-chart-sub { height: 200px; margin-top: -10px; }
     /* 【已修正】移动端 NAS 布局 */
     #nas-grid-container { grid-template-columns: 1fr; }
     .nas-card-grid { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }

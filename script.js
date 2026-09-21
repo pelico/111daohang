@@ -531,6 +531,23 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         container.appendChild(frag);
     }
+    // 按小时桶对齐两个数据源（预报/实测），返回公共时刻点 {t(ms), a, b}
+    function alignByHour(pointsA, pointsB) {
+        const agg = pts => {
+            const m = {};
+            for (const p of pts) {
+                const t = Math.floor(new Date(p.observation_time).getTime() / 3600000);
+                if (!m[t]) m[t] = [];
+                m[t].push(Number(p.temperature));
+            }
+            const out = {};
+            for (const t in m) out[t] = m[t].reduce((s, v) => s + v, 0) / m[t].length;
+            return out;
+        };
+        const ma = agg(pointsA), mb = agg(pointsB);
+        return Object.keys(ma).filter(k => mb[k] != null).sort((a, b) => a - b)
+            .map(k => ({ t: Number(k) * 3600000, a: ma[k], b: mb[k] }));
+    }
     function displayTrendCharts(historyData) {
         const container = document.getElementById('weather-charts-container');
         if (!container) return;
@@ -541,25 +558,123 @@ document.addEventListener('DOMContentLoaded', function() {
         const cities = {};
         for (const record of historyData) { if (!cities[record.city_name]) cities[record.city_name] = []; cities[record.city_name].push(record); }
         for (const cityName in cities) {
-            const chartContainer = document.createElement('div');
-            chartContainer.className = 'weather-chart-container';
-            const canvas = document.createElement('canvas');
-            chartContainer.appendChild(canvas);
-            container.appendChild(chartContainer);
-            const datasets = [];
-            const cityHistory = cities[cityName];
-            const sources = {};
-            for (const record of cityHistory) { if (!sources[record.source]) sources[record.source] = []; sources[record.source].push(record); }
-            for (const sourceName in sources) {
-                const style = sourceStyles[sourceName] || sourceStyles.default;
-                const sourceData = sources[sourceName];
-                datasets.push({ label: `温度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.temperature })), borderColor: style.tempColor, backgroundColor: style.tempColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y', tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
-                datasets.push({ label: `湿度 - ${style.label}`, data: sourceData.map(d => ({ x: new Date(d.observation_time), y: d.humidity })), borderColor: style.humidColor, backgroundColor: style.humidColor.replace('rgb', 'rgba').replace(')', ', 0.5)'), yAxisID: 'y1', borderDash: [5, 5], tension: 0.1, borderWidth: 1.5, pointRadius: 0 });
+            const records = cities[cityName];
+            const bySource = {};
+            for (const r of records) { if (!bySource[r.source]) bySource[r.source] = []; bySource[r.source].push(r); }
+            const sourceNames = Object.keys(bySource);
+
+            // ④ 动态标题：按数据实际跨度；点密度低时显示数据点
+            const tsList = records.map(r => new Date(r.observation_time).getTime());
+            const spanH = (Math.max(...tsList) - Math.min(...tsList)) / 3600000;
+            const spanLabel = spanH <= 26 ? '近24小时' : (spanH <= 80 ? '近3天' : '近7天');
+            const sparse = records.length < 60;
+
+            // ② 偏差：预报(HefengAPI) - 实测(ESP8266)，按小时桶对齐
+            const fore = bySource['HefengAPI'] || [];
+            const actual = bySource['ESP8266'] || [];
+            let latestDiff = null;
+            if (fore.length && actual.length) {
+                const aligned = alignByHour(fore, actual);
+                if (aligned.length) latestDiff = +(aligned[aligned.length - 1].a - aligned[aligned.length - 1].b).toFixed(1);
             }
-            // P0-1: 用城市名做唯一 id，注册到注册表
-            const chartId = `weather-${cityName}`;
-            const c = new Chart(canvas, { type: 'line', data: { datasets: datasets }, options: { responsive: true, interaction: { mode: 'x', intersect: false, }, plugins: { title: { display: true, text: `${cityName} - 24小时趋势`, font: { size: isMobile ? 14 : 18 } }, legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 }, boxWidth: 10, boxHeight: 10 } } }, scales: { x: { type: 'time', time: { unit: 'hour', tooltipFormat: 'HH:mm', displayFormats: { hour: 'HH:mm' } }, title: { display: false }, ticks: { font: { size: 10 } } }, y: { type: 'linear', display: true, position: 'left', title: { display: !isMobile, text: '温度 (°C)' }, ticks: { font: { size: 10 } } }, y1: { type: 'linear', display: true, position: 'right', title: { display: !isMobile, text: '湿度 (%)' }, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } } } } });
-            registerChart(chartId, c);
+
+            // ---------- 主图：温度对比 + 偏差填充带 ----------
+            const mainBox = document.createElement('div');
+            mainBox.className = 'weather-chart-container';
+            const mainCanvas = document.createElement('canvas');
+            mainBox.appendChild(mainCanvas);
+            container.appendChild(mainBox);
+
+            const tempDatasets = [];
+            const humDatasets = [];
+            for (const s of sourceNames) {
+                const st = sourceStyles[s] || sourceStyles.default;
+                const sd = bySource[s];
+                const isFore = s === 'HefengAPI';
+                const isAct = s === 'ESP8266';
+                tempDatasets.push({
+                    label: isFore ? '预报温度' : (isAct ? '实测温度' : `温度 - ${st.label}`),
+                    data: sd.map(d => ({ x: new Date(d.observation_time), y: d.temperature })),
+                    borderColor: st.tempColor,
+                    borderDash: isAct ? [] : [5, 4],          // 实测实线，预报/其他虚线
+                    borderWidth: isAct ? 2 : 1.5,
+                    tension: 0.3,
+                    pointRadius: sparse ? 2 : 0,
+                    pointHoverRadius: 3,
+                    fill: false,
+                    yAxisID: 'y',
+                });
+                humDatasets.push({
+                    label: isFore ? '预报湿度' : (isAct ? '实测湿度' : `湿度 - ${st.label}`),
+                    data: sd.map(d => ({ x: new Date(d.observation_time), y: d.humidity })),
+                    borderColor: st.humidColor,
+                    borderDash: [3, 4],
+                    borderWidth: 1.2,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    fill: false,
+                    yAxisID: 'y',
+                });
+            }
+            // 偏差填充带：预报-实测，偏暖暖色/偏冷冷色，挂右轴从 0 起
+            if (fore.length && actual.length) {
+                const aligned = alignByHour(fore, actual);
+                const warm = [], cool = [];
+                for (const p of aligned) {
+                    const d = +(p.a - p.b).toFixed(2);
+                    if (d > 0) warm.push({ x: new Date(p.t), y: d });
+                    else if (d < 0) cool.push({ x: new Date(p.t), y: Math.abs(d) });
+                }
+                if (warm.length) tempDatasets.push({ label: '偏差(偏暖)', data: warm, borderWidth: 0, backgroundColor: 'rgba(255,99,132,0.35)', fill: { target: 'origin' }, pointRadius: 0, yAxisID: 'y1' });
+                if (cool.length) tempDatasets.push({ label: '偏差(偏冷)', data: cool.map(p => ({ x: p.x, y: -p.y })), borderWidth: 0, backgroundColor: 'rgba(54,162,235,0.35)', fill: { target: 'origin' }, pointRadius: 0, yAxisID: 'y1' });
+            }
+            const diffText = latestDiff != null ? (latestDiff > 0 ? ` · 最新：预报偏暖 +${latestDiff}°C` : ` · 最新：预报偏冷 ${latestDiff}°C`) : '';
+            const mainC = new Chart(mainCanvas, {
+                type: 'line',
+                data: { datasets: tempDatasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'x', intersect: false },
+                    plugins: {
+                        title: { display: true, text: `${cityName} - 温度对比 · ${spanLabel}${diffText}`, font: { size: isMobile ? 13 : 15 } },
+                        legend: { display: !isMobile, position: 'bottom', labels: { font: { size: 10 }, boxWidth: 10, boxHeight: 10, filter: item => !String(item.text).startsWith('偏差') } },
+                        tooltip: { enabled: !isMobile, mode: 'x', intersect: false },
+                    },
+                    scales: {
+                        x: { type: 'time', time: { unit: 'hour', tooltipFormat: 'HH:mm', displayFormats: { hour: 'HH:mm' } }, title: { display: false }, ticks: { font: { size: 10 } } },
+                        y: { display: true, position: 'left', title: { display: !isMobile, text: '温度 (°C)' }, ticks: { font: { size: 10 } } },
+                        y1: { display: true, position: 'right', title: { display: !isMobile, text: '偏差 (°C)' }, beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } },
+                    },
+                },
+            });
+            registerChart(`weather-${cityName}-temp`, mainC);
+
+            // ---------- 副图：湿度对比（弱化） ----------
+            const humBox = document.createElement('div');
+            humBox.className = 'weather-chart-container weather-chart-sub';
+            const humCanvas = document.createElement('canvas');
+            humBox.appendChild(humCanvas);
+            container.appendChild(humBox);
+            const humC = new Chart(humCanvas, {
+                type: 'line',
+                data: { datasets: humDatasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'x', intersect: false },
+                    plugins: {
+                        title: { display: true, text: `${cityName} - 湿度对比 · ${spanLabel}`, font: { size: isMobile ? 12 : 13 } },
+                        legend: { display: false },
+                        tooltip: { enabled: !isMobile, mode: 'x', intersect: false },
+                    },
+                    scales: {
+                        x: { type: 'time', time: { unit: 'hour', tooltipFormat: 'HH:mm', displayFormats: { hour: 'HH:mm' } }, title: { display: false }, ticks: { font: { size: 10 } } },
+                        y: { display: true, position: 'left', title: { display: false, text: '湿度 (%)' }, suggestedMin: 0, suggestedMax: 100, ticks: { font: { size: 10 } } },
+                    },
+                },
+            });
+            registerChart(`weather-${cityName}-hum`, humC);
         }
     }
 
