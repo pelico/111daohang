@@ -50,13 +50,24 @@ export default {
 		} catch (e) {
 			console.error('ingest batch failed', e);
 		}
-		// 全链路是否成功写入 D1，作为健康检查信号（用于 /health 与调试）
-		await env.KV.put('ingest:last_status', JSON.stringify({
-			ts: Math.floor(started / 1000),
-			durationMs: Date.now() - started,
-			results,
-		}));
-		// 扩展执行时间，避免日志被截断/超时
+		// ④ 状态写入：有错误立即写，无错误时每 6 小时心跳一次（避免每轮无脑写 KV）
+		const errors = results.filter(r => !r.ok);
+		let shouldWriteStatus = errors.length > 0;
+		if (!shouldWriteStatus) {
+			try {
+				const st = await env.KV.get('ingest:last_status', 'json');
+				if (!st || !st.ts || Math.floor(started / 1000) - st.ts >= 6 * 3600) {
+					shouldWriteStatus = true;
+				}
+			} catch { shouldWriteStatus = true; }
+		}
+		if (shouldWriteStatus) {
+			await env.KV.put('ingest:last_status', JSON.stringify({
+				ts: Math.floor(started / 1000),
+				durationMs: Date.now() - started,
+				results,
+			}));
+		}
 		ctx.waitUntil(Promise.resolve());
 	},
 
@@ -92,12 +103,21 @@ async function ingestOne(url, env, nowMs) {
 	const m = parseVmMetrics(text);
 
 	const nowSec = Math.floor(nowMs / 1000);
+	// 节流快照的最小间隔（秒）：Cron 10min × 4 轮 = 40min
+	const SNAPSHOT_THROTTLE = 4 * 600;
+
 	// 设备号：若该 URL 已在寄存器登记过（设置弹窗添加），沿用其 id 保持前后台一致；
 	// 否则优先真实主机名，泛化名（node_exporter/docker 容器环境）时改用链接 host 主标签
 	const deviceId = await deviceIdForUrl(env, url, m.hostname);
 
-	// 读取上次基准（原始计数器 + 采样时间）
-	const prev = (await env.KV.get(`dev:prev:${deviceId}`, 'json')) || null;
+	// ①② 合并 key：dev:state:${id} 同时存计数器基准 prev + 实时快照 lastSnapshot
+	// 读取本次 state（含计数器基准），兼容旧 key 自动迁移
+	const state = (await env.KV.get(`dev:state:${deviceId}`, 'json')) || {};
+	let prev = state.prev || null;
+	if (!prev) {
+		const legacy = await env.KV.get(`dev:prev:${deviceId}`, 'json');
+		if (legacy) prev = legacy;
+	}
 
 	let upBps = 0, downBps = 0, cpuPct = null;
 	const rebooted = prev && m.bootTime > 0 && prev.bootTime > 0 && m.bootTime !== prev.bootTime;
@@ -139,8 +159,19 @@ async function ingestOne(url, env, nowMs) {
 		.bind(deviceId, url, m.hostname || null, nowSec, nowSec)
 		.run();
 
-	// 实时快照（前端零计算读这里）
-	await env.KV.put(`device:last:${deviceId}`, JSON.stringify({
+	// 登记设备列表 + 元数据（KV，前端 index/realtime 读 device:list 和 dev:meta）
+	await addToDeviceList(env, deviceId, url);
+
+	// 保存本次 state（prev 必写；lastSnapshot ③节流：距上次不足 40min 保留旧值，前端实时性由 probe.js 直抓保障）
+	const newPrev = {
+		ts: nowSec,
+		bootTime: m.bootTime || 0,
+		net: { recv: m.net.recv.toString(), sent: m.net.sent.toString() },
+		cpu: { total: m.cpu.total.toString(), idle: m.cpu.idle.toString() },
+	};
+	const lastSnap = state.lastSnapshot || { ts: 0 };
+	const snapFresh = nowSec - (lastSnap.ts || 0) >= SNAPSHOT_THROTTLE;
+	const newSnap = snapFresh ? {
 		device_id: deviceId, url, ts: nowSec,
 		bootTime: m.bootTime || 0,
 		cpu: cpuPct == null ? null : round(cpuPct, 1),
@@ -148,18 +179,10 @@ async function ingestOne(url, env, nowMs) {
 		up: round(upBps), down: round(downBps),
 		temp: tempC,
 		fs: m.fs.total > 0 ? { total: Math.round(m.fs.total), avail: Math.round(m.fs.avail) } : null,
-	}));
+	} : lastSnap;
 
-	// 更新设备列表 + 元数据（KV，前端 index/realtime 读 device:list 和 dev:meta）
-	await addToDeviceList(env, deviceId, url);
-
-	// 保存本次原始计数器，作为下次基准（BigInt 以字符串保存，避免精度丢失）
-	await env.KV.put(`dev:prev:${deviceId}`, JSON.stringify({
-		ts: nowSec,
-		bootTime: m.bootTime || 0,
-		net: { recv: m.net.recv.toString(), sent: m.net.sent.toString() },
-		cpu: { total: m.cpu.total.toString(), idle: m.cpu.idle.toString() },
-	}));
+	// ② 单次写入合并 key：prev + lastSnapshot，原 2 次 KV.put 现在 1 次
+	await env.KV.put(`dev:state:${deviceId}`, JSON.stringify({ prev: newPrev, lastSnapshot: newSnap }));
 
 	// 写前兜底滚动删除（与 Cron 双保险；见下方 dailyCleanup）
 	await maybeCleanup(env, nowSec);
