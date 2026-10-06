@@ -169,6 +169,8 @@ footer { text-align: center; margin-top: 60px; padding: 25px; color: rgba(255, 2
 .nas-card-header { position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 15px; min-height: 20px; }
 .nas-card-title { font-weight: bold; color: var(--primary-dark); }
 .nas-card-updated { position: absolute; right: 0; top: 50%; transform: translateY(-50%); font-size: 0.72em; color: var(--text-light); white-space: nowrap; }
+.nas-card-stale-badge { display: inline-block; margin-left: 4px; padding: 1px 6px; border-radius: 8px; font-size: 0.9em; color: #fff; background: var(--warning-color, #ff9800); }
+.nas-card-container.nas-card-stale { opacity: 0.82; }
 .nas-error { color: var(--danger-color); }
 
 /* --- 设置图标和弹窗 --- */

@@ -753,7 +753,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 : '';
             const uptimeText = nas_formatUptime(dev.bootTime, dev.ts || Math.floor(Date.now() / 1000));
             const uptimeLine = uptimeText ? `<div class="nas-metric-subvalue">已运行 ${uptimeText}</div>` : '';
-            return `<div class="nas-card-container" data-device="${escapeHtml(dev.device_id||'')}" data-url="${escapeHtml(dev.url||'')}"> <div class="nas-card-header"><span class="nas-card-title">${label}</span><span class="nas-card-updated">${dev.ts?('更新: '+new Date(dev.ts*1000).toLocaleTimeString()):'等待数据...'}</span></div> <div class="nas-card-grid"> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-microchip"></i></div><div class="nas-metric-details"><span class="nas-metric-label">CPU</span><div class="nas-metric-value">${dev.cpu==null?'--':Number(dev.cpu).toFixed(1)+'%'}</div>${uptimeLine}</div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-memory"></i></div><div class="nas-metric-details"><span class="nas-metric-label">内存</span><div class="nas-metric-value">${dev.mem==null?'--':Number(dev.mem).toFixed(1)+'%'}</div></div></div> ${tempTile} ${fsTile} <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-exchange-alt"></i></div><div class="nas-metric-details"><span class="nas-metric-label">上传/下载</span><div class="nas-metric-value small-font">${nas_formatSpeed(dev.up||0)} / ${nas_formatSpeed(dev.down||0)}</div></div></div> </div> </div>`;
+            const staleBadge = dev.stale ? ' <span class="nas-card-stale-badge">数据延迟</span>' : '';
+            return `<div class="nas-card-container${dev.stale ? ' nas-card-stale' : ''}" data-device="${escapeHtml(dev.device_id||'')}" data-url="${escapeHtml(dev.url||'')}"> <div class="nas-card-header"><span class="nas-card-title">${label}</span><span class="nas-card-updated">${dev.ts?('更新: '+new Date(dev.ts*1000).toLocaleTimeString()):'等待数据...'}${staleBadge}</span></div> <div class="nas-card-grid"> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-microchip"></i></div><div class="nas-metric-details"><span class="nas-metric-label">CPU</span><div class="nas-metric-value">${dev.cpu==null?'--':Number(dev.cpu).toFixed(1)+'%'}</div>${uptimeLine}</div></div> <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-memory"></i></div><div class="nas-metric-details"><span class="nas-metric-label">内存</span><div class="nas-metric-value">${dev.mem==null?'--':Number(dev.mem).toFixed(1)+'%'}</div></div></div> ${tempTile} ${fsTile} <div class="nas-metric-card"><div class="nas-metric-icon"><i class="fas fa-exchange-alt"></i></div><div class="nas-metric-details"><span class="nas-metric-label">上传/下载</span><div class="nas-metric-value small-font">${nas_formatSpeed(dev.up||0)} / ${nas_formatSpeed(dev.down||0)}</div></div></div> </div> </div>`;
         }
         function renderRealtimeCards() {
             const container = document.getElementById('nas-grid-container');
@@ -761,6 +762,18 @@ document.addEventListener('DOMContentLoaded', function() {
             container.innerHTML = nasDevices.length
                 ? nasDevices.map(createNasCardHtml).join('')
                 : `<div style="padding:20px;text-align:center;color:var(--text-secondary);">暂无 NAS 数据，点击右上角 <i class="fas fa-cog"></i> 在设置里添加 metrics 链接</div>`;
+        }
+        // 合并新响应与本地已有数据：本轮缺失的设备保留最近一次数据（卡片不消失），
+        // 前台(probe)超过 3 分钟未更新标记"数据延迟"；后台(snapshot)快照本身最长 40min 旧，不标记。
+        function mergeDevices(fresh, probeMode) {
+            const byId = {};
+            for (const d of nasDevices) if (d && d.device_id) byId[d.device_id] = d;
+            for (const d of fresh) { if (!d || !d.device_id) continue; byId[d.device_id] = d; }
+            const now = Math.floor(Date.now() / 1000);
+            return Object.values(byId).map(d => {
+                d.stale = probeMode && (now - (d.ts || 0)) > 180;
+                return d;
+            });
         }
         function updatePageTitle() {
             if (document.hidden) return;
@@ -821,7 +834,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     };
                 });
 
-                nasDevices = merged;
+                nasDevices = mergeDevices(merged, true);
                 renderRealtimeCards();
                 totalSpeeds = { up: 0, down: 0 };
                 merged.forEach(d => { totalSpeeds.up += d.up || 0; totalSpeeds.down += d.down || 0; });
@@ -835,7 +848,7 @@ document.addEventListener('DOMContentLoaded', function() {
         async function updateViaSnapshot() {
             try {
                 const devs = await fetchRealtime();
-                nasDevices = devs;
+                nasDevices = mergeDevices(devs, false);
                 renderRealtimeCards();
                 totalSpeeds = { up: 0, down: 0 };
                 devs.forEach(d => { totalSpeeds.up += d.up || 0; totalSpeeds.down += d.down || 0; });
@@ -939,7 +952,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 const btn = e.target.closest('.delete-nas-button');
                 if (!btn) return;
                 const deviceId = btn.getAttribute('data-device');
-                await postJson(NAS_API.unregister, { device_id: deviceId });
+                const r = await postJson(NAS_API.unregister, { device_id: deviceId });
+                if (r.ok) {
+                    // 手动注销：从本地缓存移除，卡片才真正消失（区别于临时抓取失败）
+                    nasDevices = nasDevices.filter(d => d.device_id !== deviceId);
+                    delete probeLast[deviceId];
+                    renderRealtimeCards();
+                }
                 renderUrlListInModal();
                 usingProbe ? updateViaProbe() : updateViaSnapshot();
                 if (typeof loadNasMonitoring === 'function') loadNasMonitoring();
