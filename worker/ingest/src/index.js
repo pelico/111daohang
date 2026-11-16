@@ -172,10 +172,10 @@ export default {
 		const started = Date.now();
 		const results = [];
 		// 优先走 Pages probe 取数：NAS 源站/WAF 会拒绝 Worker 出口（HTTP 403）
-		const probeDevices = await fetchViaProbe(env);
-		if (probeDevices) {
+		const probe = await fetchViaProbe(env);
+		if (probe.devices) {
 			await Promise.all(
-				probeDevices.map(async d => {
+				probe.devices.map(async d => {
 					try {
 						await ingestMetrics({
 							deviceId: d.device_id,
@@ -200,6 +200,8 @@ export default {
 				})
 			);
 		} else {
+			// 记录 probe 失败原因，便于 /health 定位
+			results.push({ url: probe.url, ok: false, error: probe.error, via: 'probe' });
 			// 直连兜底（probe 不可用时）
 			try {
 				const sources = await resolveSources(env);
@@ -258,10 +260,11 @@ async function fetchViaProbe(env) {
 		if (!res.ok) throw new Error(`HTTP ${res.status}`);
 		const data = await res.json();
 		const list = (data && Array.isArray(data.devices)) ? data.devices : [];
-		return list.length ? list : null;
+		if (!list.length) throw new Error('probe 返回空设备列表');
+		return { devices: list, url: probeUrl, error: null };
 	} catch (e) {
 		console.error('probe 取数失败，回退直连', e);
-		return null;
+		return { devices: null, url: probeUrl, error: `${e.name}: ${e.message}` };
 	}
 }
 
