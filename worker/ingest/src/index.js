@@ -87,11 +87,11 @@ async function resolveSources(env) {
 	const seen = new Set();
 	const add = u => { if (u && !seen.has(u)) { seen.add(u); urls.push(u); } };
 
-	const raw = await env.KV.get('device:list', 'text');
+	const raw = await env.KV.get('device:list', { type: 'text', cacheTtl: 60 });
 	if (raw) {
 		let ids = [];
 		try { ids = JSON.parse(raw); } catch (e) { /* 忽略 */ }
-		const metas = await Promise.all(ids.map(id => env.KV.get(`dev:meta:${id}`, 'json')));
+		const metas = await Promise.all(ids.map(id => env.KV.get(`dev:meta:${id}`, { type: 'json', cacheTtl: 60 })));
 		for (const m of metas) if (m && m.url) add(m.url);
 	}
 	if (env.METRICS_URL) add(env.METRICS_URL);
@@ -190,13 +190,13 @@ async function ingestOne(url, env, nowMs) {
 
 // 生成稳定的设备标识：优先复用寄存器里已登记的 id（保证前后台一致），否则用真实主机名，泛化时用链接 host 主标签
 async function deviceIdForUrl(env, url, hostname) {
-	const raw = await env.KV.get('device:list', 'text');
+	const raw = await env.KV.get('device:list', { type: 'text', cacheTtl: 60 });
 	if (raw) {
 		let ids = [];
 		try { ids = JSON.parse(raw); } catch (e) {}
 		for (const id of ids) {
 			if (typeof id !== 'string') continue;
-			const m = await env.KV.get(`dev:meta:${id}`, 'json');
+			const m = await env.KV.get(`dev:meta:${id}`, { type: 'json', cacheTtl: 60 });
 			if (m && m.url === url) return id;
 		}
 	}

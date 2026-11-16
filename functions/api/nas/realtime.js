@@ -2,13 +2,13 @@
 // 2026-10-03：适配合并 key dev:state:${id}，lastSnapshot 嵌套；兼容旧 device:last:${id} fallback
 export async function onRequestGet(ctx) {
 	const env = ctx.env;
-	const list = (await env.KV.get('device:list', 'json')) || [];
+	const list = (await env.KV.get('device:list', { type: 'json', cacheTtl: 60 })) || [];
 	const snap = await Promise.all(
 		list.map(async id => {
-			const st = await env.KV.get(`dev:state:${id}`, 'json');
+			const st = await env.KV.get(`dev:state:${id}`, { type: 'json', cacheTtl: 60 });
 			if (st && st.lastSnapshot) return { id, d: st.lastSnapshot };
 			// 兼容旧 key（迁移期 fallback）
-			const legacy = await env.KV.get(`device:last:${id}`, 'json');
+			const legacy = await env.KV.get(`device:last:${id}`, { type: 'json', cacheTtl: 300 });
 			return { id, d: legacy };
 		})
 	);

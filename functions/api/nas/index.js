@@ -1,8 +1,8 @@
 // Pages Function: GET /api/nas -> 设备列表（含 id + url，前台下拉/checkbox/设置弹窗用）
 export async function onRequestGet(ctx) {
 	const env = ctx.env;
-	const ids = (await env.KV.get('device:list', 'json')) || [];
-	const metas = await Promise.all(ids.map(id => env.KV.get(`dev:meta:${id}`, 'json')));
+	const ids = (await env.KV.get('device:list', { type: 'json', cacheTtl: 300 })) || [];
+	const metas = await Promise.all(ids.map(id => env.KV.get(`dev:meta:${id}`, { type: 'json', cacheTtl: 300 })));
 	const devices = ids.map(id => {
 		const m = metas.find(x => x && x.id === id);
 		return { id, url: m ? m.url : null };

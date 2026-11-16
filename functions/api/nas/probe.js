@@ -24,8 +24,9 @@ function sanitizeTemp(v) {
 
 export async function onRequestGet(ctx) {
 	const env = ctx.env;
-	const ids = (await env.KV.get('device:list', 'json')) || [];
-	const metas = await Promise.all(ids.map(id => env.KV.get(`dev:meta:${id}`, 'json')));
+	// cacheTtl: 边缘缓存 60s，前端 5s 轮询时不再每次打到 KV（KV 读计数骤降）
+	const ids = (await env.KV.get('device:list', { type: 'json', cacheTtl: 60 })) || [];
+	const metas = await Promise.all(ids.map(id => env.KV.get(`dev:meta:${id}`, { type: 'json', cacheTtl: 60 })));
 	const sources = ids
 		.map((id, i) => ({ id, url: metas[i] && metas[i].url }))
 		.filter(s => s.url);

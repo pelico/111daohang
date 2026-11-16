@@ -13,6 +13,8 @@ export async function onRequestPost(ctx) {
 	await env.KV.delete(`dev:meta:${deviceId}`);
 	await env.KV.delete(`dev:last:${deviceId}`);
 	await env.KV.delete(`dev:prev:${deviceId}`);
+	// 合并后的新 key（改版遗漏，不删会残留数据且被 realtime 继续读到）
+	await env.KV.delete(`dev:state:${deviceId}`);
 
 	const ids = (await env.KV.get('device:list', 'json')) || [];
 	const next = ids.filter(x => x !== deviceId);
