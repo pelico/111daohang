@@ -34,21 +34,52 @@ export default {
 	async scheduled(event, env, ctx) {
 		const started = Date.now();
 		const results = [];
-		try {
-			const sources = await resolveSources(env);
+		// 优先走 Pages probe 取数：NAS 源站/WAF 会拒绝 Worker 出口（HTTP 403）
+		const probeDevices = await fetchViaProbe(env);
+		if (probeDevices) {
 			await Promise.all(
-				sources.map(async url => {
+				probeDevices.map(async d => {
 					try {
-						await ingestOne(url, env, started);
-						results.push({ url, ok: true });
+						await ingestMetrics({
+							deviceId: d.device_id,
+							url: d.url,
+							hostname: null,
+							bootTime: d.bootTime || 0,
+							cpu: {
+								idle: Number(d.cpu && d.cpu.idle),
+								total: Number(d.cpu && d.cpu.total),
+								idleValid: !!(d.cpu && d.cpu.idleValid),
+							},
+							net: { recv: String((d.net && d.net.recv) ?? '0'), sent: String((d.net && d.net.sent) ?? '0') },
+							memPct: d.mem,
+							temp: d.temp,
+							fs: d.fs || { total: 0, avail: 0 },
+						}, env, started);
+						results.push({ url: d.url, ok: true, via: 'probe' });
 					} catch (e) {
-						console.error(`ingest[${url}]`, e);
-						results.push({ url, ok: false, error: e.message });
+						console.error(`ingest[probe:${d.device_id}]`, e);
+						results.push({ url: d.url, ok: false, error: e.message, via: 'probe' });
 					}
 				})
 			);
-		} catch (e) {
-			console.error('ingest batch failed', e);
+		} else {
+			// 直连兜底（probe 不可用时）
+			try {
+				const sources = await resolveSources(env);
+				await Promise.all(
+					sources.map(async url => {
+						try {
+							await ingestOne(url, env, started);
+							results.push({ url, ok: true, via: 'direct' });
+						} catch (e) {
+							console.error(`ingest[${url}]`, e);
+							results.push({ url, ok: false, error: e.message, via: 'direct' });
+						}
+					})
+				);
+			} catch (e) {
+				console.error('ingest batch failed', e);
+			}
 		}
 		// ④ 状态写入：有错误立即写，无错误时每 6 小时心跳一次（避免每轮无脑写 KV）
 		const errors = results.filter(r => !r.ok);
@@ -81,6 +112,22 @@ export default {
 	},
 };
 
+// 通过 Pages probe 取数：NAS 源站/WAF 会拒绝 Worker 出口（403），Pages 出口可正常访问
+async function fetchViaProbe(env) {
+	// 兜底硬编码：用 Dashboard「编辑代码」部署时不会带入 wrangler.toml 的 vars
+	const probeUrl = env.PROBE_URL || 'https://111daohang.pages.dev/api/nas/probe';
+	try {
+		const res = await fetch(probeUrl, { headers: { accept: 'application/json' } });
+		if (!res.ok) throw new Error(`HTTP ${res.status}`);
+		const data = await res.json();
+		const list = (data && Array.isArray(data.devices)) ? data.devices : [];
+		return list.length ? list : null;
+	} catch (e) {
+		console.error('probe 取数失败，回退直连', e);
+		return null;
+	}
+}
+
 async function resolveSources(env) {
 	// 总是合并 device:list 里登记的多源（含前端/断链/新增），再补默认单源，按 url 去重
 	const urls = [];
@@ -107,13 +154,29 @@ async function ingestOne(url, env, nowMs) {
 	const text = await fetchSource(url);
 	const m = parseVmMetrics(text);
 
-	const nowSec = Math.floor(nowMs / 1000);
-	// 节流快照的最小间隔（秒）：Cron 10min × 4 轮 = 40min
-	const SNAPSHOT_THROTTLE = 4 * 600;
-
 	// 设备号：若该 URL 已在寄存器登记过（设置弹窗添加），沿用其 id 保持前后台一致；
 	// 否则优先真实主机名，泛化名（node_exporter/docker 容器环境）时改用链接 host 主标签
 	const deviceId = await deviceIdForUrl(env, url, m.hostname);
+
+	await ingestMetrics({
+		deviceId,
+		url,
+		hostname: m.hostname,
+		bootTime: m.bootTime,
+		cpu: m.cpu,
+		net: m.net,
+		memPct: m.memPct,
+		temp: m.temp,
+		fs: m.fs,
+	}, env, nowMs);
+}
+
+// 统一入库逻辑：直连抓取与 Pages probe 取数共用
+async function ingestMetrics(d, env, nowMs) {
+	const { deviceId, url } = d;
+	const nowSec = Math.floor(nowMs / 1000);
+	// 节流快照的最小间隔（秒）：Cron 10min × 4 轮 = 40min
+	const SNAPSHOT_THROTTLE = 4 * 600;
 
 	// ①② 合并 key：dev:state:${id} 同时存计数器基准 prev + 实时快照 lastSnapshot
 	// 读取本次 state（含计数器基准），兼容旧 key 自动迁移；KV 异常时降级为无基准（速率为 0，仍写 D1）
@@ -132,22 +195,22 @@ async function ingestOne(url, env, nowMs) {
 	}
 
 	let upBps = 0, downBps = 0, cpuPct = null;
-	const rebooted = prev && m.bootTime > 0 && prev.bootTime > 0 && m.bootTime !== prev.bootTime;
+	const rebooted = prev && d.bootTime > 0 && prev.bootTime > 0 && d.bootTime !== prev.bootTime;
 
 	if (prev && !rebooted) {
 		const dtSec = nowSec - prev.ts;
 		if (dtSec > 0) {
-			downBps = safeRate(m.net.recv, prev.net.recv, dtSec);
-			upBps = safeRate(m.net.sent, prev.net.sent, dtSec);
-			if (m.cpu.idleValid && prev.cpu.idle > 0 && m.cpu.total > prev.cpu.total) {
-				const idleDiff = m.cpu.idle - prev.cpu.idle;
-				const totalDiff = m.cpu.total - prev.cpu.total;
+			downBps = safeRate(d.net.recv, prev.net.recv, dtSec);
+			upBps = safeRate(d.net.sent, prev.net.sent, dtSec);
+			if (d.cpu.idleValid && prev.cpu.idle > 0 && d.cpu.total > prev.cpu.total) {
+				const idleDiff = d.cpu.idle - prev.cpu.idle;
+				const totalDiff = d.cpu.total - prev.cpu.total;
 				if (totalDiff > 0) cpuPct = Math.max(0, Math.min(100, 100 * (1 - Number(idleDiff) / Number(totalDiff))));
 			}
 		}
 	}
-	const memPct = clampPct(m.memPct);
-	const tempC = sanitizeTemp(m.temp);
+	const memPct = clampPct(d.memPct);
+	const tempC = sanitizeTemp(d.temp);
 
 	// 写 D1 历史（UPSERT，主键 device_id+ts）
 	await env.DB.prepare(
@@ -168,7 +231,7 @@ async function ingestOne(url, env, nowMs) {
 		 ON CONFLICT(device_id) DO UPDATE SET
 		   url = excluded.url, hostname = COALESCE(excluded.hostname, devices.hostname), last_seen = excluded.last_seen`
 	)
-		.bind(deviceId, url, m.hostname || null, nowSec, nowSec)
+		.bind(deviceId, url, d.hostname || null, nowSec, nowSec)
 		.run();
 
 	// 登记设备列表 + 元数据（KV，前端 index/realtime 读 device:list 和 dev:meta）
@@ -182,20 +245,20 @@ async function ingestOne(url, env, nowMs) {
 	// 保存本次 state（prev 必写；lastSnapshot ③节流：距上次不足 40min 保留旧值，前端实时性由 probe.js 直抓保障）
 	const newPrev = {
 		ts: nowSec,
-		bootTime: m.bootTime || 0,
-		net: { recv: m.net.recv.toString(), sent: m.net.sent.toString() },
-		cpu: { total: m.cpu.total.toString(), idle: m.cpu.idle.toString() },
+		bootTime: d.bootTime || 0,
+		net: { recv: String(d.net.recv), sent: String(d.net.sent) },
+		cpu: { total: String(d.cpu.total), idle: String(d.cpu.idle) },
 	};
 	const lastSnap = state.lastSnapshot || { ts: 0 };
 	const snapFresh = nowSec - (lastSnap.ts || 0) >= SNAPSHOT_THROTTLE;
 	const newSnap = snapFresh ? {
 		device_id: deviceId, url, ts: nowSec,
-		bootTime: m.bootTime || 0,
+		bootTime: d.bootTime || 0,
 		cpu: cpuPct == null ? null : round(cpuPct, 1),
 		mem: memPct,
 		up: round(upBps), down: round(downBps),
 		temp: tempC,
-		fs: m.fs.total > 0 ? { total: Math.round(m.fs.total), avail: Math.round(m.fs.avail) } : null,
+		fs: d.fs && d.fs.total > 0 ? { total: Math.round(d.fs.total), avail: Math.round(d.fs.avail) } : null,
 	} : lastSnap;
 
 	// ② 单次写入合并 key：prev + lastSnapshot，原 2 次 KV.put 现在 1 次

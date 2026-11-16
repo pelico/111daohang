@@ -8,6 +8,8 @@ compatibility_flags = ["nodejs_compat"]
 # - vars.METRICS_URL 仅作"默认/保底源"：为空时自动注册为第一个长驻源；也可留空，完全由前端添加驱动多源。
 [vars]
 METRICS_URL = "https://wkyapi.111312.xyz/metrics"
+# Pages 侧 probe 接口：Worker 直连 metrics 会被源站 403，改走 Pages 出口取数
+PROBE_URL = "https://111daohang.pages.dev/api/nas/probe"
 
 # 每 10 分钟触发一次采样（降低免费额度消耗，趋势图精度足够）
 [triggers]
