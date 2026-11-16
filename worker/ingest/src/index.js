@@ -87,12 +87,17 @@ async function resolveSources(env) {
 	const seen = new Set();
 	const add = u => { if (u && !seen.has(u)) { seen.add(u); urls.push(u); } };
 
-	const raw = await env.KV.get('device:list', { type: 'text', cacheTtl: 60 });
-	if (raw) {
-		let ids = [];
-		try { ids = JSON.parse(raw); } catch (e) { /* 忽略 */ }
-		const metas = await Promise.all(ids.map(id => env.KV.get(`dev:meta:${id}`, { type: 'json', cacheTtl: 60 })));
-		for (const m of metas) if (m && m.url) add(m.url);
+	// KV 不可用（如配额超限 429）时不能让整轮采集中止，退回默认源继续写 D1
+	try {
+		const raw = await env.KV.get('device:list', { type: 'text', cacheTtl: 60 });
+		if (raw) {
+			let ids = [];
+			try { ids = JSON.parse(raw); } catch (e) { /* 忽略 */ }
+			const metas = await Promise.all(ids.map(id => env.KV.get(`dev:meta:${id}`, { type: 'json', cacheTtl: 60 }).catch(() => null)));
+			for (const m of metas) if (m && m.url) add(m.url);
+		}
+	} catch (e) {
+		console.error('resolveSources: KV 读取失败，使用默认源', e);
 	}
 	if (env.METRICS_URL) add(env.METRICS_URL);
 	return urls;
@@ -111,12 +116,19 @@ async function ingestOne(url, env, nowMs) {
 	const deviceId = await deviceIdForUrl(env, url, m.hostname);
 
 	// ①② 合并 key：dev:state:${id} 同时存计数器基准 prev + 实时快照 lastSnapshot
-	// 读取本次 state（含计数器基准），兼容旧 key 自动迁移
-	const state = (await env.KV.get(`dev:state:${deviceId}`, 'json')) || {};
+	// 读取本次 state（含计数器基准），兼容旧 key 自动迁移；KV 异常时降级为无基准（速率为 0，仍写 D1）
+	let state = {};
+	try {
+		state = (await env.KV.get(`dev:state:${deviceId}`, { type: 'json', cacheTtl: 60 })) || {};
+	} catch (e) {
+		console.error(`ingest[${deviceId}]: state 读取失败，按首轮处理`, e);
+	}
 	let prev = state.prev || null;
 	if (!prev) {
-		const legacy = await env.KV.get(`dev:prev:${deviceId}`, 'json');
-		if (legacy) prev = legacy;
+		try {
+			const legacy = await env.KV.get(`dev:prev:${deviceId}`, { type: 'json', cacheTtl: 60 });
+			if (legacy) prev = legacy;
+		} catch (e) { /* 忽略 */ }
 	}
 
 	let upBps = 0, downBps = 0, cpuPct = null;
@@ -160,7 +172,12 @@ async function ingestOne(url, env, nowMs) {
 		.run();
 
 	// 登记设备列表 + 元数据（KV，前端 index/realtime 读 device:list 和 dev:meta）
-	await addToDeviceList(env, deviceId, url);
+	// KV 写失败（配额/429）不应影响本轮 D1 采集结果
+	try {
+		await addToDeviceList(env, deviceId, url);
+	} catch (e) {
+		console.error(`ingest[${deviceId}]: 设备列表写入失败`, e);
+	}
 
 	// 保存本次 state（prev 必写；lastSnapshot ③节流：距上次不足 40min 保留旧值，前端实时性由 probe.js 直抓保障）
 	const newPrev = {
@@ -182,7 +199,11 @@ async function ingestOne(url, env, nowMs) {
 	} : lastSnap;
 
 	// ② 单次写入合并 key：prev + lastSnapshot，原 2 次 KV.put 现在 1 次
-	await env.KV.put(`dev:state:${deviceId}`, JSON.stringify({ prev: newPrev, lastSnapshot: newSnap }));
+	try {
+		await env.KV.put(`dev:state:${deviceId}`, JSON.stringify({ prev: newPrev, lastSnapshot: newSnap }));
+	} catch (e) {
+		console.error(`ingest[${deviceId}]: state 写入失败`, e);
+	}
 
 	// 写前兜底滚动删除（与 Cron 双保险；见下方 dailyCleanup）
 	await maybeCleanup(env, nowSec);
@@ -190,15 +211,20 @@ async function ingestOne(url, env, nowMs) {
 
 // 生成稳定的设备标识：优先复用寄存器里已登记的 id（保证前后台一致），否则用真实主机名，泛化时用链接 host 主标签
 async function deviceIdForUrl(env, url, hostname) {
-	const raw = await env.KV.get('device:list', { type: 'text', cacheTtl: 60 });
-	if (raw) {
-		let ids = [];
-		try { ids = JSON.parse(raw); } catch (e) {}
-		for (const id of ids) {
-			if (typeof id !== 'string') continue;
-			const m = await env.KV.get(`dev:meta:${id}`, { type: 'json', cacheTtl: 60 });
-			if (m && m.url === url) return id;
+	// KV 异常时退回纯计算 id，保证 D1 照常写入
+	try {
+		const raw = await env.KV.get('device:list', { type: 'text', cacheTtl: 60 });
+		if (raw) {
+			let ids = [];
+			try { ids = JSON.parse(raw); } catch (e) {}
+			for (const id of ids) {
+				if (typeof id !== 'string') continue;
+				const m = await env.KV.get(`dev:meta:${id}`, { type: 'json', cacheTtl: 60 });
+				if (m && m.url === url) return id;
+			}
 		}
+	} catch (e) {
+		console.error('deviceIdForUrl: KV 读取失败，使用计算 id', e);
 	}
 	return deviceIdFor(url, hostname);
 }

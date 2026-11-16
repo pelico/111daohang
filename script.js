@@ -323,6 +323,17 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = res.ok ? await res.json() : {};
             devices = (data && Array.isArray(data.devices)) ? data.devices : [];
         } catch (e) { devices = []; }
+        // KV 不可用（如配额超限）时降级：从 D1 历史索引取最近活跃设备，保证历史图仍能展示
+        if (!devices.length) {
+            try {
+                const res = await fetchWithTimeout(`${NAS_HISTORY_API}?range=${encodeURIComponent(nasHistoryRange)}`, { cache: 'no-store' }, 20000);
+                if (res.ok) {
+                    const data = await res.json();
+                    const list = (data && Array.isArray(data.devices)) ? data.devices : [];
+                    devices = list.map(d => ({ id: d.device_id, url: null }));
+                }
+            } catch (e) { /* 忽略，仍走空态 */ }
+        }
         if (!nasSelectedDevices.length) nasSelectedDevices = devices.map(d => d.id);
         renderNasHistorySection(devices);
         await fetchNasHistory();
