@@ -220,20 +220,23 @@ export default {
 				console.error('ingest batch failed', e);
 			}
 		}
-		// ④ 状态写入：有错误立即写，无错误时每 6 小时心跳一次（避免每轮无脑写 KV）
+		// ④ 状态写入节流：状态变化立即写；持续失败最多 30 分钟记一次；成功每 6 小时心跳
 		const errors = results.filter(r => !r.ok);
-		let shouldWriteStatus = errors.length > 0;
-		if (!shouldWriteStatus) {
-			try {
-				const st = await env.KV.get('ingest:last_status', 'json');
-				if (!st || !st.ts || Math.floor(started / 1000) - st.ts >= 6 * 3600) {
-					shouldWriteStatus = true;
-				}
-			} catch { shouldWriteStatus = true; }
-		}
+		const nowSec = Math.floor(started / 1000);
+		let shouldWriteStatus = false;
+		try {
+			const st = await env.KV.get('ingest:last_status', 'json');
+			const prevHadError = !!(st && Array.isArray(st.results) && st.results.some(r => !r.ok));
+			const nowHadError = errors.length > 0;
+			const age = st && st.ts ? nowSec - st.ts : Infinity;
+			if (!st) shouldWriteStatus = true;
+			else if (prevHadError !== nowHadError) shouldWriteStatus = true;
+			else if (nowHadError && age >= 1800) shouldWriteStatus = true;
+			else if (!nowHadError && age >= 6 * 3600) shouldWriteStatus = true;
+		} catch { shouldWriteStatus = true; }
 		if (shouldWriteStatus) {
 			await env.KV.put('ingest:last_status', JSON.stringify({
-				ts: Math.floor(started / 1000),
+				ts: nowSec,
 				durationMs: Date.now() - started,
 				results,
 			}));
@@ -401,11 +404,19 @@ async function ingestMetrics(d, env, nowMs) {
 		fs: d.fs && d.fs.total > 0 ? { total: Math.round(d.fs.total), avail: Math.round(d.fs.avail) } : null,
 	} : lastSnap;
 
-	// ② 单次写入合并 key：prev + lastSnapshot，原 2 次 KV.put 现在 1 次
-	try {
-		await env.KV.put(`dev:state:${deviceId}`, JSON.stringify({ prev: newPrev, lastSnapshot: newSnap }));
-	} catch (e) {
-		console.error(`ingest[${deviceId}]: state 写入失败`, e);
+	// ② 写入节流：KV 免费层 put 上限 1000/天，cron 5min × 4 台 = 1152 已超额
+	// 间隔内跳过写入；下一轮读到的 prev 更旧，dtSec 变大但算出的仍是准确平均速率
+	const STATE_WRITE_INTERVAL = 600;
+	if (nowSec - (state.writtenAt || 0) >= STATE_WRITE_INTERVAL) {
+		try {
+			await env.KV.put(`dev:state:${deviceId}`, JSON.stringify({
+				prev: newPrev,
+				lastSnapshot: newSnap,
+				writtenAt: nowSec,
+			}));
+		} catch (e) {
+			console.error(`ingest[${deviceId}]: state 写入失败`, e);
+		}
 	}
 
 	// 写前兜底滚动删除（与 Cron 双保险；见下方 dailyCleanup）
